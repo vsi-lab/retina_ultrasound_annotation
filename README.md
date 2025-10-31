@@ -1,5 +1,5 @@
 
-# Retinal Ultrasound Segmentation Project
+# Retinal Ultrasound Segmentation
 
 This repository implements a segmentation pipeline for **retinal ultrasound (USG)** imaging.  
 It focuses on delineating *retinal detachment* and related anatomical layers using modern architectures like **TransUNet** and **U-Net**.  
