@@ -1,0 +1,86 @@
+
+seed: 42
+
+
+data:
+  num_classes: 3                           # Number of segmentation classes (excluding background)
+  class_names: ["background", "retina_sclera", "retinal_detachment"]
+  labels:                                  # Mapping from class name to integer ID
+    background: 0
+    retina_sclera: 1
+    retinal_detachment: 2
+    # optic_nerve: 3                       # Uncomment if optic nerve sheath is included
+
+  work_dir: /Users/saurav1/python/masters/arizona/2nd/fall/usg_segmentation/work_dir                       # Base directory for current experiment
+  images_sub: images                       # Folder containing input images
+  masks_sub: masks_ids                         # Folder containing ground-truth masks
+  masks_color_sub: masks_color
+  out_dir: data                            # Folder for generated CSVs (train/val/test)
+
+  val_frac: 0.15                          # Split ratios
+  test_frac: 0.15
+  train_frac: 0.70
+  stratify_by_rd: true
+
+  input_mode: grayscale                    # "grayscale" for USG, RGB if needed later
+  reader: auto                             # Automatically selects cv2 or PIL for reading
+  train_csv: /Users/saurav1/python/masters/arizona/2nd/fall/usg_segmentation/work_dir/data/train.csv
+  val_csv:   /Users/saurav1/python/masters/arizona/2nd/fall/usg_segmentation/work_dir/data/val.csv
+  test_csv:  /Users/saurav1/python/masters/arizona/2nd/fall/usg_segmentation/work_dir/data/test.csv
+
+  resize: [512, 512]                       # Target spatial resolution (HxW)
+  normalize: zscore                        # Normalization type: zscore|minmax|log
+  despeckle: median3                       # Apply median filter for speckle reduction
+  fan_mask: none                           # For optional sector cropping (none|left|right|center)
+
+  mask_mode: grayscale          # auto | grayscale | color  (auto = detect by channels)
+  color_palette:           # used if mask is color (BGR as saved by cv2)
+    background: [0, 0, 0]
+    retina_sclera: [0, 255, 0]
+    retinal_detachment: [0, 255, 255]
+    # optic_nerve: [0, 255, 255]  # example; set actual colors to  use
+
+
+model:
+  name: transunet                          # Backbone: transunet or unet
+  base: 32                                 # Base number of filters in encoder
+  embed_dim: 256                           # Transformer embedding dimension
+  depth: 4                                 # Number of encoder-decoder stages
+  heads: 8                                 # Number of transformer heads
+  patch_size: 16                           # ViT patch size (TransUNet only)
+
+aug:
+  hflip: 0.2                               # Horizontal flip probability
+  rotate_deg: [-5, 5]                      # Random rotation range (degrees)
+  scale: [0.98, 1.02]                      # Random scale factor range
+  translate: [-0.02, 0.02]                 # Random translation (fraction of width/height)
+  shear_deg: [-2, 2]                       # Random shear range (degrees)
+  brightness: [0.95, 1.05]                 # Random brightness adjustment
+  contrast: [0.95, 1.05]                   # Random contrast adjustment
+  gaussian_noise_std: 0.01                 # Speckle noise standard deviation
+  p: 0.9                                   # Overall augmentation probability
+
+train:
+  batch_size: 4                            # Images per batch
+  epochs: 1  # 40                               # Number of training epochs
+  optimizer: adam                          # Optimizer type (adam, sgd, etc.)
+  lr: 1.0e-3                               # Initial learning rate
+  weight_decay: 1.0e-5                     # L2 regularization
+  lr_schedule: cosine                      # Learning rate scheduler type
+  ckpt_dir: runs/seg                       # Checkpoint save directory
+
+loss:
+  type: dice_focal                         # Combined Dice + Focal loss
+  dice_weight: 0.7                         # Dice contribution
+  focal_weight: 0.3                        # Focal contribution
+  focal_gamma: 2.0                         # Focal focusing parameter
+
+eval:
+  threshold: 0.5                           # Sigmoid threshold for binary segmentation
+
+splits:
+  train_frac: 0.7
+  val_frac: 0.15
+  test_frac: 0.15
+  seed: 42
+  stratify_by_rd: true                     # Ensures even distribution of RD cases

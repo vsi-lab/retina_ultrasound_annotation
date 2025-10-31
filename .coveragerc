@@ -1,0 +1,14 @@
+[run]
+branch = True
+source = .
+omit =
+    tests/*
+    */__init__.py
+    */__main__.py
+    configs/*
+    setup.py
+
+[report]
+show_missing = True
+skip_covered = True
+precision = 2

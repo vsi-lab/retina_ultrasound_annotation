@@ -1,0 +1,23 @@
+torch>=2.2
+torchvision>=0.17
+albumentations>=1.4
+opencv-python>=4.9
+numpy>=1.26
+pandas>=2.2
+pyyaml>=6.0
+tqdm>=4.66
+scikit-learn>=1.5
+joblib>=1.4
+pydicom>=2.4
+Pillow>=10.0
+matplotlib>=3.9
+pyarrow
+fastparquet
+
+# Test requirements
+pytest>=7.4
+opencv-python>=4.8
+numpy>=1.24
+tqdm>=4.66
+pyyaml>=6.0
+pytest-cov
