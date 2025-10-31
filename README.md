@@ -1,3 +1,4 @@
+### TESTS : [![ci](https://github.com/vsi-lab/retina_ultrasound_annotation/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vsi-lab/retina_ultrasound_annotation/actions/workflows/ci.yml)
 
 # Retinal Ultrasound Segmentation
 
