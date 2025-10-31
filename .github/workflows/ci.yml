@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ "**" ]
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   tests:
     runs-on: ubuntu-latest
@@ -78,11 +82,9 @@ jobs:
           name: coverage-html-${{ matrix.python-version }}
           path: coverage_html
 
-      # Optional: upload to Codecov if we  add CODECOV_TOKEN in repo secrets
-      - name: Upload to Codecov (optional)
-        if: ${{ secrets.CODECOV_TOKEN != '' }}
+      - name: Upload to Codecov (tokenless)
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
         uses: codecov/codecov-action@v4
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.xml
           fail_ci_if_error: false
