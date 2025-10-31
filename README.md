@@ -25,7 +25,7 @@ https://pmc.ncbi.nlm.nih.gov/articles/PMC11875030/
 
 ---
 
-###  Pipeline Overview
+####  Pipeline Overview
 
 ```text
 Ultrasound Image
@@ -101,11 +101,11 @@ usg_segmentation/
 │   │   ├── train.csv
 │   │   ├── val.csv
 │   │   └── test.csv
-│   ├── images/                    # Example ultrasound images
+│   ├── images/                    # Example ultrasound images (RAW COLOR IMAGES HERE)
 │   │   ├── img1.png
 │   │   └── img2.png
-│   ├── masks_color/                # Supervisely color overlays (as-is)
-│   ├── masks_ids/                  # single-channel, 0..3 class-ID masks
+│   ├── masks_color/                # Supervisely color overlays (as-is) (COPY SUPERVISELY ANNOTATED COLOR MASKS HERE)
+│   ├── masks_ids/                  # single-channel, 0..3 class-ID masks (COPY SUPERVISELY single channel masks output here)
 │   ├── preview_predictions/        # Preview Original, ground truth, prediction as image panel 
 │   └── runs/                      # Model checkpoints, logs, and classifier runs
 │
@@ -150,7 +150,7 @@ data:
 
 ---
 
-## Quickstart
+# Quickstart
 
 ```bash
 # 1) Install
@@ -214,7 +214,7 @@ python -m utils.preview_augs  --config configs/config_usg.yaml --n 12
 ---
 
 
-## Augmentation & Preprocessing
+# Augmentation & Preprocessing
 
 This project uses a custom augmentation pipeline tailored for ocular ultrasound (B-scan). The same core functions are used for both training and preview, so what we see in the preview panels is what the model is trained on.
 
@@ -331,7 +331,7 @@ All transformations are deterministic examples (not random) to allow clinicians 
 
 
 ---
-## Model Training and Evaluation
+# Model Training and Evaluation
 The model can be trained using TransUNet or U-Net.
 Both share the same data pipeline and loss configuration.
 
@@ -390,7 +390,7 @@ python -m training.train_seg \
 
 ---
 
-##  Segmentation, Feature Extraction, and Classification Pipeline
+# Segmentation, Feature Extraction, and Classification Pipeline
 
 After segmentation, the pipeline extends to **feature extraction** and **disease classification** to determine the presence of *retinal detachment (RD)* from ultrasound images.
 
@@ -467,7 +467,7 @@ Results logged --> work_dir/runs/cls_rd/
 
 
 
-##  Configuration Overview
+#  Configuration Overview
 
 Below is a simplified view of the main configuration file  
 [`configs/config_usg.yaml`](configs/config_usg.yaml).  
@@ -527,7 +527,7 @@ aug:
  ```
 
 --- 
-## References
+# References
 
 - **TVST 2025 Study:** *Automated Detection of Retinal Detachment using Deep Learning-based Segmentation on Ocular Ultrasonography*  
   [PMCID: PMC11875030](https://pmc.ncbi.nlm.nih.gov/articles/PMC11875030/)
@@ -539,7 +539,7 @@ aug:
   [https://albumentations.ai](https://albumentations.ai)
 
 
-## Appendix
+# Appendix
 
 ### Inspect class distribution in your feature files
 
