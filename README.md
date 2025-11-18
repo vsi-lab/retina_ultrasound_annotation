@@ -17,7 +17,7 @@ https://pmc.ncbi.nlm.nih.gov/articles/PMC11875030/
 ## Note on Models to train
 - Unet++ : Gold standard baseline for segmentation
 - TransUnet : A very strong option here as noted in TVST 2025 study.
-- sam2rad : It's a Segment Anything Model (SAM) variant, state-of-the-art approach being trained on ultrasound images. https://huggingface.co/MLforHealthcare/sam2rad
+- MedSAM / 2 : 
 
 Time permitting, these ones too
 - SegFormer / Mask2Former: These are newer, pure-transformer architectures. They are replacing U-Net in many benchmarks and available on huggingface
