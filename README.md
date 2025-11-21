@@ -109,18 +109,7 @@ usg_segmentation/
 │   └── vis.py                     # Visualization helpers for masks, contours, overlays
 │
 ├── work_dir/                      # Working directory for outputs
-│   ├── aug_previews/              # Augmentation preview panels (e.g., img1__preview_panel.png)
-│   ├── data/                      # Auto-generated CSV splits (train/val/test)
-│   │   ├── train.csv
-│   │   ├── val.csv
-│   │   └── test.csv
-│   ├── images/                    # Example ultrasound images (RAW COLOR IMAGES HERE)
-│   │   ├── img1.png
-│   │   └── img2.png
-│   ├── masks_color/                # Supervisely color overlays (as-is) (COPY SUPERVISELY ANNOTATED COLOR MASKS HERE)
-│   ├── masks_ids/                  # single-channel, 0..3 class-ID masks (COPY SUPERVISELY single channel masks output here)
-│   ├── preview_predictions/        # Preview Original, ground truth, prediction as image panel 
-│   └── runs/                      # Model checkpoints, logs, and classifier runs
+│    ├──                           # Refer next section.
 │
 └── README.md                      # Project documentation and usage guide
 
@@ -132,11 +121,26 @@ Keep each experiment self‑contained in one folder:
 
 ```
 work_dir/
-  images/    # B-scan USG images (.png/.jpg or .dcm)
-  masks_color/            # Supervisely color annotation overlays (as-is)
-  masks_ids/              # single-channel masks (0=bg, 1=retina_sclera, 2=retinal_detachment), "mask" export from Supervisely
-  data/      # auto-generated CSVs appear here (train.csv / val.csv / test.csv)
-  runs/      # training outputs (ckpts, evals), e.g. runs/seg_transunet/
+ ├── aug_previews/  # Augmentation preview panels (e.g., img1__preview_panel.png)
+ ├── preview_predictions/        # Preview Original, ground truth, prediction as image panel 
+ │
+ ├── images/
+ │    ├── Patient1/
+ │    │     ├── Subject 1.1.png
+ │    │     ├── Subject 1.2.png
+ │    │     └── ...
+ │    ├── Patient2/
+ │    └── ...
+ ├── masks/
+ │    └── (mirrors the images/ structure; same filenames)
+ ├── metadata/
+ │    ├── labels.csv        # image_path, mask_path, patient_id, scan_id, diagnosis (empty)
+ │    ├── train.csv         # patient-level split
+ │    ├── val.csv
+ │    ├── test.csv
+ │    └── stats.csv         # basic dataset stats
+ ├── meta.json              # Supervisely class definitions
+ └── obj_class_to_machine_color.json
 ```
 
 

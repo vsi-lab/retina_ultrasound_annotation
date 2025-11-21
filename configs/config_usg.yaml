@@ -3,8 +3,8 @@ seed: 42
 
 
 data:
-  num_classes: 3                           # Number of segmentation classes (excluding background)
-  class_names: ["background", "retina_sclera", "retinal_detachment"]
+  num_classes: 4                           # Number of segmentation classes (excluding background)
+  class_names: ["background", "retina", "choroid", "optic_nerve", "vitreous_humor"]
   labels:                                  # Mapping from class name to integer ID
     background: 0
     retina_sclera: 1
@@ -78,9 +78,14 @@ loss:
 eval:
   threshold: 0.5                           # Sigmoid threshold for binary segmentation
 
+# Split by Patient (avoid leakage)
 splits:
-  train_frac: 0.7
-  val_frac: 0.15
-  test_frac: 0.15
+  train: ["Patient1", "Patient2", "Patient3", "Patient4", "Patient8"]
+  val:   ["Patient5"]
+  test:  ["Patient6", "Patient7"]
+
+#  train_frac: 0.7
+#  val_frac: 0.15
+#  test_frac: 0.15
   seed: 42
   stratify_by_rd: true                     # Ensures even distribution of RD cases
