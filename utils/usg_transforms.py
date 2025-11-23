@@ -1,3 +1,5 @@
+# utils/usg_transforms.py
+
 # Preview behavior:
 # - Shows representative examples for rotate, shear, hflip, scale, translate, speckle, gamma.
 # - Uses the same AugParams and apply_* functions as training.

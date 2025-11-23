@@ -1,17 +1,22 @@
-
+# configs/config_usg.yaml
 seed: 42
+work_root: "/Users/saurav1/python/masters/arizona/2nd/fall/retina_ultrasound_annotation/work_dir"
 
 
 data:
-  num_classes: 4                           # Number of segmentation classes (excluding background)
+  num_classes: 5                           # Number of segmentation classes (excluding background)
   class_names: ["background", "retina", "choroid", "optic_nerve", "vitreous_humor"]
   labels:                                  # Mapping from class name to integer ID
     background: 0
-    retina_sclera: 1
-    retinal_detachment: 2
-    # optic_nerve: 3                       # Uncomment if optic nerve sheath is included
+    vitreous_humor: 1
+    retina: 2
+    optic_nerve: 3
+    choroid: 4
 
-  work_dir: /Users/saurav1/python/masters/arizona/2nd/fall/usg_segmentation/work_dir                       # Base directory for current experiment
+  # EXPERIMENT to remove optic nerve
+  drop_classes: ["optic_nerve"]
+
+  work_dir: "{work_root}"                       # Base directory for current experiment
   images_sub: images                       # Folder containing input images
   masks_sub: masks_ids                         # Folder containing ground-truth masks
   masks_color_sub: masks_color
@@ -24,33 +29,51 @@ data:
 
   input_mode: grayscale                    # "grayscale" for USG, RGB if needed later
   reader: auto                             # Automatically selects cv2 or PIL for reading
-  train_csv: /Users/saurav1/python/masters/arizona/2nd/fall/usg_segmentation/work_dir/data/train.csv
-  val_csv:   /Users/saurav1/python/masters/arizona/2nd/fall/usg_segmentation/work_dir/data/val.csv
-  test_csv:  /Users/saurav1/python/masters/arizona/2nd/fall/usg_segmentation/work_dir/data/test.csv
+  train_csv: "{work_root}/metadata/train.csv"
+  val_csv:   "{work_root}/metadata/val.csv"
+  test_csv:  "{work_root}/metadata/test.csv"
 
+#  resize: [800, 1280]                       # Target spatial resolution (HxW)
   resize: [512, 512]                       # Target spatial resolution (HxW)
   normalize: zscore                        # Normalization type: zscore|minmax|log
   despeckle: median3                       # Apply median filter for speckle reduction
   fan_mask: none                           # For optional sector cropping (none|left|right|center)
+  return_path: true
 
   mask_mode: grayscale          # auto | grayscale | color  (auto = detect by channels)
-  color_palette:           # used if mask is color (BGR as saved by cv2)
-    background: [0, 0, 0]
-    retina_sclera: [0, 255, 0]
-    retinal_detachment: [0, 255, 255]
-    # optic_nerve: [0, 255, 255]  # example; set actual colors to  use
+#  color_palette:           # used if mask is color (BGR as saved by cv2)
+#    background: [0, 0, 0]
+#    retina: [0, 255, 0]
+#    choroid: [0, 255, 255]
+#    vitreous_humor: [255, 0,  255]  # example; set actual colors to  use
+#    optic_nerve: [124, 124,  255]  # example; set actual colors to  use
 
 
 model:
-  name: transunet                          # Backbone: transunet or unet
-  base: 32                                 # Base number of filters in encoder
-  embed_dim: 256                           # Transformer embedding dimension
-  depth: 4                                 # Number of encoder-decoder stages
-  heads: 8                                 # Number of transformer heads
-  patch_size: 16                           # ViT patch size (TransUNet only)
+  # unet++ pretrained
+  name: unetpp
+  encoder_name: resnet50       # for SMP backbones (unetpp/unet); e.g., resnet34 | resnet50
+  encoder_weights: imagenet
+
+  # ViT
+#  name: transunet_pretrained
+  # Path to Google ViT .npz (ImageNet-21k pretraining). Example below is ViT-B/16.
+  vit_pretrained_npz: "{work_root}/pretrained/vit_base_patch16_224_in21k.npz"
+
+  # ViT/TransUNet knobs (matching typical ViT-B/16):
+  embed_dim: 768
+  depth: 12
+  heads: 12
+  patch_size: 16
+  img_size: 512   # make sure your letterbox/resize yields multiples of patch_size
+  # Decoder base channels (your TransUNet implementation often uses this)
+  base: 32
+  # Grayscale input
+  in_channels: 1
+  # ViT/TransUNet ends
 
 aug:
-  hflip: 0.2                               # Horizontal flip probability
+  hflip: 0.0                               # Horizontal flip probability
   rotate_deg: [-5, 5]                      # Random rotation range (degrees)
   scale: [0.98, 1.02]                      # Random scale factor range
   translate: [-0.02, 0.02]                 # Random translation (fraction of width/height)
@@ -62,12 +85,12 @@ aug:
 
 train:
   batch_size: 4                            # Images per batch
-  epochs: 1  # 40                               # Number of training epochs
-  optimizer: adam                          # Optimizer type (adam, sgd, etc.)
+  epochs: 5  # 40                               # Number of training epochs
   lr: 1.0e-3                               # Initial learning rate
   weight_decay: 1.0e-5                     # L2 regularization
-  lr_schedule: cosine                      # Learning rate scheduler type
-  ckpt_dir: runs/seg                       # Checkpoint save directory
+  previews_per_epoch: 2
+  early_stop_patience: 5
+  early_stop_min_delta: 0.001
 
 loss:
   type: dice_focal                         # Combined Dice + Focal loss

@@ -134,25 +134,29 @@ work_dir/
  ├── masks/
  │    └── (mirrors the images/ structure; same filenames)
  ├── metadata/
- │    ├── labels.csv        # image_path, mask_path, patient_id, scan_id, diagnosis (empty)
- │    ├── train.csv         # patient-level split
+ │    ├── labels.csv                      # image_path, mask_path, patient_id, scan_id, diagnosis
+ │    ├── train.csv                       # patient-level splits
  │    ├── val.csv
  │    ├── test.csv
- │    └── stats.csv         # basic dataset stats
- ├── meta.json              # Supervisely class definitions
- └── obj_class_to_machine_color.json
+ │    └── stats.csv                       # basic dataset stats
+ ├── meta.json                            # Supervisely class definitions
+ └── obj_class_to_machine_color.json      # Supervisely class to greyscale color mapping
 ```
 
 
 ### Create CSVs automatically
 ```bash
-python -m utils.scan_to_csv --config configs/config_usg.yaml
+python -m utils.build_ultrasound_csvs --work_dir work_dir --config configs/config_usg.yaml
+Oe 
+python -m utils.build_ultrasound_csvs --work_dir work_dir --config configs/config_usg.yaml --labels_csv work_dir/metadata/disease_labels.csv
 ```
-This pairs files by **matching filename stems** (e.g., `case001.png` ↔ `case001.png`  OR `imag1.png` ↔ `img1.png`) and writes:
+This pairs files by **matching filename stems** and writes:
 ```
-work_dir/data/train.csv
-work_dir/data/val.csv
-work_dir/data/test.csv
+work_dir/metadata/train.csv
+work_dir/metadata/val.csv
+work_dir/metadata/test.csv
+work_dir/metadata/labels.csv
+work_dir/metadata/stats.csv
 ```
 
 ### Point the config to your `work_dir`
@@ -160,9 +164,9 @@ Edit `configs/config_usg.yaml` so that:
 ```yaml
 data:
   work_dir: <root>/work_dir
-  train_csv: <root>/work_dir/data/train.csv
-  val_csv:   <root>/work_dir/data/val.csv
-  test_csv:  <root>/work_dir/data/test.csv
+  train_csv: <root>/work_dir/metadata/train.csv
+  val_csv:   <root>/work_dir/metadata/val.csv
+  test_csv:  <root>/work_dir/metadata/test.csv
 ```
 
 ---
@@ -175,14 +179,19 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# 2) Build CSVs from work_dir
-python -m utils.scan_to_csv --config configs/config_usg.yaml
+# 2) Build CSVs / Stats from work_dir
+python -m utils.build_ultrasound_csvs --work_dir work_dir --config configs/config_usg.yaml --labels_csv work_dir/metadata/disease_labels.csv
 
-# 3) Train TransUNet segmenter   → learns pixel masks.
-python -m training.train_seg  --config configs/config_usg.yaml  --out  work_dir/runs/seg_transunet
+# 3) train seg-only
+python -m training.train_seg --config configs/config_usg.yaml --out work_dir/runs/seg_transunet
 
-# 4) Evaluate on test  → picks checkpoint.
-python -m training.eval_seg --config configs/config_usg.yaml --ckpt   work_dir/runs/seg_transunet/best.ckpt --eval_csv work_dir/data/test.csv  --out work_dir/runs/seg_transunet/eval
+# 3a) Eval step 3)  
+python -m training.eval_seg --config configs/config_usg.yaml --ckpt work_dir/runs/seg_transunet/best.ckpt --out work_dir/runs/seg_transunet/eval
+
+# 3b) Preview panels (optional)  
+python -m utils.preview_predictions --num_samples 6 --config configs/config_usg.yaml --ckpt work_dir/runs/seg_transunet/best.ckpt --eval_csv work_dir/metadata/test.csv --out_dir work_dir/preview_predictions 
+ 
+---- OLD 
 
 # 5) Extract region features from predicted masks  → converts predictions to 6–7 tabular features + has_rd_gt label.
 python -m features.extract_features --config configs/config_usg.yaml  --ckpt work_dir/runs/seg_transunet/best.ckpt  --csv  work_dir/data/train.csv --out work_dir/features/train_feats.parquet
@@ -207,7 +216,7 @@ python -m utils.preview_augs  --config configs/config_usg.yaml --n 12
   python -m utils.preview_predictions \
       --config   configs/config_usg.yaml \
       --ckpt     work_dir/runs/seg_transunet/best.ckpt \
-      --eval_csv work_dir/data/test.csv \
+      --eval_csv work_dir/metadata/test.csv \
       --out_dir  work_dir/preview_predictions \
       --num_samples 6 \
       --pred_mode prob|binary|argmax \
@@ -218,7 +227,7 @@ python -m utils.preview_augs  --config configs/config_usg.yaml --n 12
   python -m utils.preview_predictions \
       --config   configs/config_usg.yaml \
       --ckpt     work_dir/runs/seg_transunet/best.ckpt \
-      --eval_csv work_dir/data/test.csv \
+      --eval_csv work_dir/metadata/test.csv \
       --out_dir  work_dir/preview_predictions \
       --num_samples 6 \
       --pred_mode prob \

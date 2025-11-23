@@ -4,19 +4,64 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-
+from utils.paths import resolve_under_root_cfg
+from pathlib import Path
+import json
 """
 Dataset loader for segmentation training and validation.
-
-Implements SegCSV, which reads image–mask paths from a CSV, loads grayscale
-ultrasound frames, applies preprocessing (resize, normalization, despeckle),
-and optional Albumentations augmentations.
-
-Ensures that geometric transforms are applied synchronously to image and mask.
+Reads image/mask paths from CSV.
+Always returns:
+  img: FloatTensor [1,H,W]
+  msk: LongTensor  [H,W] with class ids in [0..num_classes-1]
 """
 
+# --- add near the top of dataset.py ---
+
+def _norm_key(s: str) -> str:
+    return (
+        s.strip().lower()
+         .replace("-", " ")
+         .replace("/", " ")
+         .replace(".", " ")
+         .replace("__", "_")
+         .replace(" ", "_")
+    )
+
+def _hex_to_rgb(h: str):
+    h = h.lstrip("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+def _letterbox_pair(img_gray, mask, size_hw):
+    """
+    Resize with preserved aspect ratio and pad to exactly size_hw (H,W).
+    Pads with 0 (black) for image and 0 (background) for mask.
+    Returns: img_lb, msk_lb
+    """
+    Ht, Wt = size_hw
+    h, w = img_gray.shape[:2]
+    if h == 0 or w == 0:
+        raise ValueError(f"Bad image shape: {img_gray.shape}")
+
+    scale = min(Ht / float(h), Wt / float(w))
+    new_h = int(round(h * scale))
+    new_w = int(round(w * scale))
+
+    img_r = cv2.resize(img_gray, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    msk_r = cv2.resize(mask, (new_w, new_h), interpolation=cv2.INTER_NEAREST)
+
+    top    = (Ht - new_h) // 2
+    bottom = Ht - new_h - top
+    left   = (Wt - new_w) // 2
+    right  = Wt - new_w - left
+
+    img_lb = cv2.copyMakeBorder(img_r, top, bottom, left, right,
+                                borderType=cv2.BORDER_CONSTANT, value=0)
+    msk_lb = cv2.copyMakeBorder(msk_r, top, bottom, left, right,
+                                borderType=cv2.BORDER_CONSTANT, value=0)
+    return img_lb, msk_lb
+
 def _read_gray(path):
-    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    img = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise FileNotFoundError(f"Could not read image: {path}")
     return img
@@ -28,22 +73,20 @@ def _resize_pair(img_gray, mask, size_hw):
     return img_r, msk_r
 
 def _normalize(img_f, mode: str):
-    # img_f is float32 in [0,1] after /255
     mode = (mode or "zscore").lower()
     if mode == "zscore":
         mean = float(img_f.mean())
         std  = float(img_f.std())
         if std < 1e-6:
-            # constant image: zero-center only
             return img_f - mean
         return (img_f - mean) / std
     elif mode == "minmax":
-        # already [0,1]
         return img_f
     elif mode == "log":
         return np.log1p(img_f)
     else:
         return img_f
+
 
 class SegCSV(Dataset):
     def __init__(self, csv_path, cfg, augment=None, is_train=False):
@@ -51,112 +94,152 @@ class SegCSV(Dataset):
         self.df  = pd.read_csv(csv_path)
         self.augment = augment
         self.is_train = is_train
-        self.size_hw = tuple(cfg["data"]["resize"])  # [H,W]
+        self.size_hw = tuple(self.cfg["data"].get("resize") or (0, 0))  # allow null/None
         self.labels  = cfg["data"].get("labels", {})
-        # reader mode ignored here; we always read grayscale
 
     def __len__(self):
         return len(self.df)
 
+
     def __getitem__(self, i):
         row = self.df.iloc[i]
-        ip = str(row["image_path"]); mp = str(row["mask_path"])
-        img = _read_gray(ip)           # HxW uint8
-        # msk = _read_gray(mp)           # HxW uint8 (indices or grayscale)
-        msk = load_mask_as_ids(row.mask_path, self.cfg)  # 2-D int map
-        # resize to configured size
-        img, msk = _resize_pair(img, msk, self.size_hw)
-        # Albumentations expects HWC; convert and apply with mask
-        img_hwc = img[:, :, None]      # HxWx1
+        ip = resolve_under_root_cfg(self.cfg, str(row["image_path"]))
+        mp = resolve_under_root_cfg(self.cfg, str(row["mask_path"]))
+
+        img = _read_gray(ip)  # HxW uint8 (raw, no squeeze)
+        msk = load_mask_as_ids(str(mp), self.cfg)  # HxW int64 ids (raw, no squeeze)
+
+
+        # ENABLE for 1280 * 800
+        # H, W = img.shape[:2]
+        # target = self.size_hw
+        # if target and target != (0, 0):
+        #     th, tw = int(target[0]), int(target[1])
+        #     if (H, W) != (th, tw):
+        #         img, msk = _resize_pair(img, msk, (th, tw))
+
+
+
+        # Albumentations: operate on raw HxW (variable size)
+        img_hwc = img[:, :, None]
         if self.augment is not None:
             out = self.augment(image=img_hwc, mask=msk)
             img_hwc, msk = out["image"], out["mask"]
-        # back to CHW float, mask long
-        img = img_hwc[:, :, 0].astype(np.float32) / 255.0
-        img = _normalize(img, self.cfg["data"].get("normalize", "zscore"))
-        img = np.expand_dims(img, 0)   # 1xHxW
-        msk = msk.astype(np.int64)
-        return torch.from_numpy(img), torch.from_numpy(msk)
 
+        # Letterbox (preserve AR) to the model's fixed input size
+        img_fixed, msk_fixed = _letterbox_pair(img_hwc[:, :, 0], msk, self.size_hw)
+
+        # Normalize -> tensor
+        img_f = img_fixed.astype(np.float32) / 255.0
+        img_f = _normalize(img_f, self.cfg["data"].get("normalize", "zscore"))
+        img_f = np.expand_dims(img_f, 0)  # 1xHxW
+
+        # force ids valid
+        num_classes = int(self.cfg["data"]["num_classes"])
+        msk_fixed = np.clip(msk_fixed.astype(np.int64), 0, num_classes - 1)
+        # Optional: return raw path for preview panels
+        if self.cfg.get("data", {}).get("return_path", False):
+            return torch.from_numpy(img_f), torch.from_numpy(msk_fixed), str(ip)
+        return torch.from_numpy(img_f), torch.from_numpy(msk_fixed), str(ip)
 
 def load_mask_as_ids(mask_path: str, cfg: dict) -> np.ndarray:
     """
-    Load a mask image (color or grayscale) and return a 2-D int array of class IDs in [0..C-1].
+    Convert a color (Supervisely-style) or grayscale mask to a 2D id map.
+    Uses meta.json to map class name -> hex color -> id, so that training,
+    eval, and visualization share the exact same palette.
 
-    - If the file is grayscale: values should match cfg['data']['labels'] (e.g., 0/1/2/3).
-      If your binary masks are {0,255}, they will be mapped to {0,1}.
-    - If the file is color: pixels are matched to the palette in cfg['data']['color_palette'] (BGR).
-      Unmatched colors fall back to background (0) with a warning.
+    Returns int64 array with ids in [0..C-1].
     """
-    dm = cfg.get('data', {})
-    mode = dm.get('mask_mode', 'auto')
+    dm = cfg.get("data", {})
+    mode = (dm.get("mask_mode", "auto") or "auto").lower()
 
-    # read raw
     raw = cv2.imread(mask_path, cv2.IMREAD_UNCHANGED)
     if raw is None:
         raise FileNotFoundError(mask_path)
 
-    # Detect mode if needed
-    if mode == 'auto':
-        mode = 'color' if raw.ndim == 3 and raw.shape[2] >= 3 else 'grayscale'
+    # Decide path based on channels
+    if mode == "auto":
+        mode = "color" if raw.ndim == 3 and raw.shape[2] >= 3 else "grayscale"
+    labels_map = dm.get("labels", {})  # {"retina":2, ...}
+    # print("labels_map", labels_map)
 
-    if mode == 'grayscale':
+    # --- Grayscale ids (kept for completeness) ---
+    if mode == "grayscale":
         if raw.ndim == 3:
             raw = cv2.cvtColor(raw, cv2.COLOR_BGR2GRAY)
         ids = raw.astype(np.int64)
-
-        # Map common binary case {0,255} -> {0,1}
         uniq = np.unique(ids)
         if set(uniq.tolist()) <= {0, 255}:
             ids = (ids > 127).astype(np.int64)
 
-        # Optional: enforce expected values via a lookup
-        gs = dm.get('labels', None)
-        if gs is not None:
-            # Make a reverse table from raw value -> id index by class order in labels
-            labels = dm.get('labels', {})  # {'background':0, 'retina_sclera':1, ...}
-            lut = np.full(256, 0, dtype=np.int64)
-            for name, cid in labels.items():
-                v = int(gs.get(name, cid))
-                lut[v] = cid
-            # For values not listed, leave as-is (best effort)
-            ids = lut[np.clip(ids, 0, 255)]
+        drop_classes = (cfg.get("data", {}).get("drop_classes") or [])
+        if drop_classes:
+            labels = cfg["data"]["labels"]
+            drop_ids = [int(labels[nm]) for nm in drop_classes if nm in labels]
+            print(drop_ids)
+            for did in drop_ids:
+                ids[ids == did] = 0  # send to background
+
         return ids
 
-    else:  # 'color'
-        # Ensure 3 channels BGR
-        if raw.ndim == 2:
-            raw = cv2.cvtColor(raw, cv2.COLOR_GRAY2BGR)
-        bgr = raw[:, :, :3]
+    # --- Color path: build BGR->id map from meta.json + labels ---
+    if raw.ndim == 2:
+        raw = cv2.cvtColor(raw, cv2.COLOR_GRAY2BGR)
+    bgr = raw[:, :, :3]
 
-        # Build palette map: BGR tuple -> class id
-        labels = dm.get('labels', {})
-        pal_cfg = dm.get('color_palette', None)
-        if pal_cfg is None:
-            # Safe fallback palette: background black, classes bright hues
-            pal_cfg = {'background': [0,0,0]}
-            for name, cid in labels.items():
-                if name == 'background': continue
-                pal_cfg[name] = [0, 255, 0]  # replace with your real colors
 
-        bgr_to_id = {}
-        for name, cid in labels.items():
-            col = pal_cfg.get(name, [0,0,0])
+
+
+    # load meta.json sitting under work_root
+    meta_path = Path(cfg.get("work_root", ".")) / "meta.json"
+    meta = None
+    if meta_path.exists():
+        try:
+            meta = json.loads(meta_path.read_text())
+        except Exception:
+            meta = None
+
+    bgr_to_id = {}
+    if isinstance(meta, dict) and "classes" in meta and labels_map:
+        # name -> id via labels_map with normalized keys
+        norm_to_id = {_norm_key(k): int(v) for k, v in labels_map.items()}
+        for cls in meta.get("classes", []):
+            title = cls.get("title", "")
+            hexcol = cls.get("color", None)
+            nk = _norm_key(title)
+            if nk in norm_to_id and isinstance(hexcol, str):
+                r, g, b = _hex_to_rgb(hexcol)          # RGB from meta
+                bgr_to_id[(b, g, r)] = norm_to_id[nk]  # store as BGR for cv2 image
+        # ensure background maps to 0
+        if 0 not in set(bgr_to_id.values()):
+            bgr_to_id[(0, 0, 0)] = 0
+    else:
+        # fallback to config palette if meta.json missing
+        pal_cfg = dm.get("color_palette", {}) or {"background": [0, 0, 0]}
+        for name, cid in labels_map.items():
+            col = pal_cfg.get(name, [0, 0, 0])  # expecting BGR here
             bgr_to_id[tuple(int(c) for c in col)] = int(cid)
 
-        # Vectorized matching
-        H, W, _ = bgr.shape
-        ids = np.zeros((H, W), np.int64)
-        # Build mask per class
-        for col, cid in bgr_to_id.items():
-            mask = (bgr[:, :, 0] == col[0]) & (bgr[:, :, 1] == col[1]) & (bgr[:, :, 2] == col[2])
+    # vectorized paint (loop over known colors)
+    H, W, _ = bgr.shape
+    ids = np.zeros((H, W), np.int64)
+    for (bb, gg, rr), cid in bgr_to_id.items():
+        mask = (bgr[:, :, 0] == bb) & (bgr[:, :, 1] == gg) & (bgr[:, :, 2] == rr)
+        if mask.any():
             ids[mask] = cid
 
-        # Warn if there are pixels not matched (i.e., unknown color)
-        if (ids == 0).sum() != (bgr[:, :, 0] == 0).sum() or \
-           (ids == 0).sum() != (bgr[:, :, 1] == 0).sum() or \
-           (ids == 0).sum() != (bgr[:, :, 2] == 0).sum():
-            # Optional: add a proper logger; here we’re quiet to avoid spam.
-            pass
+    # clip to valid range
+    C = int(dm.get("num_classes", max(labels_map.values()) + 1))
+    ids = np.clip(ids, 0, C - 1).astype(np.int64)
 
-        return ids
+    # --- (Optional) tiny sanity check while you debug mapping ---
+    # uniq = np.unique(ids)
+    # print(f"[GT ids] {Path(mask_path).name}: " + " ".join(f"{u}:{(ids==u).sum()}" for u in uniq))
+    drop_classes = (cfg.get("data", {}).get("drop_classes") or [])
+    if drop_classes:
+        labels = cfg["data"]["labels"]
+        drop_ids = [int(labels[nm]) for nm in drop_classes if nm in labels]
+        for did in drop_ids:
+            ids[ids == did] = 0  # send to background
+    return ids
+

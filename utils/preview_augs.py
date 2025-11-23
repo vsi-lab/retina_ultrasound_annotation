@@ -6,6 +6,7 @@ import os
 import pandas as pd
 import pathlib
 import yaml
+from utils.paths import resolve_under_root_cfg
 
 from utils.usg_transforms import representative_params, apply_geom, apply_photo, AugParams
 
@@ -170,8 +171,8 @@ def main():
     args = ap.parse_args()
 
     cfg = yaml.safe_load(open(args.config, 'r'))
-    csv_path = args.csv or cfg['data']['train_csv']
-    out_dir  = args.out or os.path.join(cfg['data'].get('work_dir','.'), 'aug_previews')
+    csv_path = args.csv or (cfg['data']['train_csv']).format(**cfg)
+    out_dir  = args.out or os.path.join(cfg['data'].get('work_dir','.'), 'aug_previews').format(**cfg)
     os.makedirs(out_dir, exist_ok=True)
 
     df = pd.read_csv(csv_path)
@@ -187,8 +188,8 @@ def main():
     hfp = _hflip_p(cfg)
 
     for i in range(min(args.n, len(df))):
-        ipath = str(df.iloc[i].image_path)
-        mpath = str(df.iloc[i].mask_path)
+        ipath = str(resolve_under_root_cfg(cfg,df.iloc[i].image_path).as_posix())
+        mpath = str(resolve_under_root_cfg(cfg,df.iloc[i].mask_path).as_posix())
         stem  = pathlib.Path(ipath).stem
 
         img = load_gray_unchanged(ipath)
