@@ -5,29 +5,22 @@ work_root: "/Users/saurav1/python/masters/arizona/2nd/fall/retina_ultrasound_ann
 
 data:
   num_classes: 5                           # Number of segmentation classes (excluding background)
-  class_names: ["background", "retina", "choroid", "optic_nerve", "vitreous_humor"]
+  class_names: ["background", "vitreous_humor", "retina", "optic_nerve", "choroid"]
   labels:                                  # Mapping from class name to integer ID
     background: 0
     vitreous_humor: 1
     retina: 2
     optic_nerve: 3
     choroid: 4
-
-  # EXPERIMENT to remove optic nerve
-  drop_classes: ["optic_nerve"]
+#  class_names: ["background", "retina", "choroid"]
+#  labels:                                  # Mapping from class name to integer ID
+#    background: 0
+#    retina: 1   # shift 2 to 1
+#    choroid: 2  # shift 4 to 2
 
   work_dir: "{work_root}"                       # Base directory for current experiment
-  images_sub: images                       # Folder containing input images
-  masks_sub: masks_ids                         # Folder containing ground-truth masks
-  masks_color_sub: masks_color
   out_dir: data                            # Folder for generated CSVs (train/val/test)
 
-  val_frac: 0.15                          # Split ratios
-  test_frac: 0.15
-  train_frac: 0.70
-  stratify_by_rd: true
-
-  input_mode: grayscale                    # "grayscale" for USG, RGB if needed later
   reader: auto                             # Automatically selects cv2 or PIL for reading
   train_csv: "{work_root}/metadata/train.csv"
   val_csv:   "{work_root}/metadata/val.csv"
@@ -85,7 +78,7 @@ aug:
 
 train:
   batch_size: 4                            # Images per batch
-  epochs: 5  # 40                               # Number of training epochs
+  epochs: 20  # 40                               # Number of training epochs
   lr: 1.0e-3                               # Initial learning rate
   weight_decay: 1.0e-5                     # L2 regularization
   previews_per_epoch: 2
@@ -93,9 +86,9 @@ train:
   early_stop_min_delta: 0.001
 
 loss:
-  type: dice_focal                         # Combined Dice + Focal loss
   dice_weight: 0.7                         # Dice contribution
-  focal_weight: 0.3                        # Focal contribution
+#  focal_weight: 0.3                        # Focal contribution
+  focal_weight: 0.0                        # Focal contribution
   focal_gamma: 2.0                         # Focal focusing parameter
 
 eval:

@@ -1,8 +1,8 @@
 # training/train_seg.py
 import argparse
 import os
+import shutil
 
-import cv2
 import torch
 import warnings
 import yaml
@@ -13,6 +13,7 @@ from pathlib import Path
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from utils.paths import clean_or_make
 from models.model_factory import build_seg_model_from_cfg
 from training.augments import build_train_augs, build_val_augs
 from training.dataset import SegCSV
@@ -45,44 +46,6 @@ def _read_json(p: Path):
     if not p.exists(): return None
     with open(p, "r") as f: return json.load(f)
 
-# def train_one_epoch_GOOD(model, loader, optimizer, cfg, device, out_dir: str,
-#                     epoch: int, preview_every: int = 0):
-#     model.train()
-#     tot = 0.0
-#     step = 0
-#     meta_json = _read_json(Path(cfg["work_root"]) / "meta.json")
-#
-#     for img, msk, paths  in tqdm(loader, desc='train', leave=False):
-#         img, msk = img.to(device), msk.to(device)
-#         logits = model(img)
-#
-#         loss = composite_loss(
-#             logits, msk, cfg['data']['num_classes'],
-#             dice_w=cfg['loss']['dice_weight'],
-#             focal_w=cfg['loss']['focal_weight'],
-#             focal_gamma=cfg['loss']['focal_gamma']
-#         )
-#
-#         optimizer.zero_grad()
-#         loss.backward()
-#         optimizer.step()
-#         tot += float(loss.detach().cpu())
-#
-#         # Optional step-wise preview (kept for parity; filenames not printed here)
-#         if preview_every and (step % preview_every == 0):
-#             raw_path = paths[0] if isinstance(paths, (list, tuple)) else str(paths)
-#             save_preview_panel(
-#                 Path(out_dir) / f"preview_train_e{epoch:03d}_s{step:05d}.png",
-#                 img[0].detach().cpu(),
-#                 msk[0].detach().cpu(),
-#                 logits[0].detach().cpu(),
-#                 cfg,
-#                 meta_json=meta_json,
-#                 raw_img_path=raw_path
-#             )
-#         step += 1
-#
-#     return tot/len(loader)
 
 def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
                     epoch: int, preview_every: int = 0):
@@ -98,6 +61,7 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
     tot = 0.0
     step = 0
     K = int(cfg['data']['num_classes'])
+    meta_json = _read_json(Path(cfg["work_root"]) / "meta.json")
 
     debug_every = int(cfg.get('train', {}).get('debug_every_steps', preview_every or 50))
 
@@ -133,13 +97,13 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
                 print("[softmax_mean] " + " ".join([f"{i}:{sm_mean[i]:0.3f}" for i in range(len(sm_mean))]))
 
                 # optional: dump class-3 (optic nerve) masks for quick eyeballing
-                dbg_dir = Path(out_dir) / "debug_train"
-                dbg_dir.mkdir(parents=True, exist_ok=True)
-                on_gt  = (gt0 == 3).astype(np.uint8) * 255
-                on_pr  = (pr0 == 3).astype(np.uint8) * 255
-                stem   = Path(path0).stem.replace("/", "_")
-                cv2.imwrite(str(dbg_dir / f"{stem}_e{epoch:03d}_s{step:05d}_gt_on.png"), on_gt)
-                cv2.imwrite(str(dbg_dir / f"{stem}_e{epoch:03d}_s{step:05d}_pr_on.png"), on_pr)
+                # dbg_dir = Path(out_dir) / "debug_train"
+                # dbg_dir.mkdir(parents=True, exist_ok=True)
+                # on_gt  = (gt0 == 3).astype(np.uint8) * 255
+                # on_pr  = (pr0 == 3).astype(np.uint8) * 255
+                # stem   = Path(path0).stem.replace("/", "_")
+                # cv2.imwrite(str(dbg_dir / f"{stem}_e{epoch:03d}_s{step:05d}_gt_on.png"), on_gt)
+                # cv2.imwrite(str(dbg_dir / f"{stem}_e{epoch:03d}_s{step:05d}_pr_on.png"), on_pr)
 
 
         # --- DEBUG: per-sample histograms + optic nerve dumps + color pred ---
@@ -152,7 +116,6 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
         # if isinstance(loader.dataset[0], (tuple, list)) and len(loader.dataset[0]) == 3:
         #     paths = loader.dataset.df.image_path  # we’ll use df index below
         #
-        meta_json = _read_json(Path(cfg["work_root"]) / "meta.json")
         # id2color = build_id2color_from_meta(meta_json, cfg["data"]["labels"]) if meta_json else {}
         #
         # B = img.shape[0]
@@ -196,14 +159,17 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
 
         # --------------------# --------------------# --------------------# --------------------# --------------------# --------------------# --------------------
 
-
-
         loss = composite_loss(
             logits, msk, cfg['data']['num_classes'],
             dice_w=cfg['loss']['dice_weight'],
             focal_w=cfg['loss']['focal_weight'],
             focal_gamma=cfg['loss']['focal_gamma']
         )
+        # TODO EXPERIMENTAL IF REDUCED CLASSES
+        # --- Normalize if the underlying CE/Focal used 'sum' (keeps numbers sane)
+        # H, W = img.shape[-2], img.shape[-1]
+        # if loss.dim() == 0 and loss.item() > 1000:  # heuristic: clearly a summed loss
+        #     loss = loss / (H * W)
 
         optimizer.zero_grad()
         loss.backward()
@@ -211,31 +177,31 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
         tot += float(loss.detach().cpu())
 
         # --- Diagnostics every debug_every steps ---
-        if debug_every and (step % debug_every == 0):
-            # Argmax prediction
-            pred = torch.argmax(logits, dim=1)  # [B,H,W]
-
-            # Batch histograms
-            gt_counts   = _bincount_np(msk,  K)
-            pred_counts = _bincount_np(pred, K)
-
-            # Mean softmax per class
-            smx_str = _softmax_mean_str(logits)
-
-            # Optional short path hint
-            pstr = ""
-            if path0 is not None:
-                try:
-                    root = Path(cfg.get("work_root", ".")).resolve()
-                    pstr = " " + Path(path0).resolve().relative_to(root).as_posix()
-                except Exception:
-                    pstr = " " + str(path0)
-
-            # print(f"[gt  ]{pstr} | {_hist_str(gt_counts)}")
-            # print(f"[pred]{pstr} | {_hist_str(pred_counts)}")
-            # print(f"[softmax_mean] {smx_str}")
-            Hm, Wm = logits.shape[-2:]
-            print(f"[debug] model_input={Hm}x{Wm}")
+        # if debug_every and (step % debug_every == 0):
+        #     # Argmax prediction
+        #     pred = torch.argmax(logits, dim=1)  # [B,H,W]
+        #
+        #     # Batch histograms
+        #     gt_counts   = _bincount_np(msk,  K)
+        #     pred_counts = _bincount_np(pred, K)
+        #
+        #     # Mean softmax per class
+        #     smx_str = _softmax_mean_str(logits)
+        #
+        #     # Optional short path hint
+        #     pstr = ""
+        #     if path0 is not None:
+        #         try:
+        #             root = Path(cfg.get("work_root", ".")).resolve()
+        #             pstr = " " + Path(path0).resolve().relative_to(root).as_posix()
+        #         except Exception:
+        #             pstr = " " + str(path0)
+        #
+        #     # print(f"[gt  ]{pstr} | {_hist_str(gt_counts)}")
+        #     # print(f"[pred]{pstr} | {_hist_str(pred_counts)}")
+        #     # print(f"[softmax_mean] {smx_str}")
+        #     Hm, Wm = logits.shape[-2:]
+        #     print(f"[debug] model_input={Hm}x{Wm}")
 
         # --- Optional step-wise preview panel (as you had) ---
         if preview_every and (step % preview_every == 0):
@@ -320,11 +286,12 @@ def main():
     ap.add_argument('--train_csv', required=False)
     ap.add_argument('--val_csv', required=False)
     ap.add_argument('--out', required=True)
-    ap.add_argument('--preview_every', type=int, default=0)  # keep step-previews optional
     args = ap.parse_args()
 
     cfg = yaml.safe_load(open(args.config,'r'))
-    os.makedirs(args.out, exist_ok=True)
+
+    clean_or_make(args.out)
+
     device = environment.device()
     train_csv = args.train_csv or (cfg['data']['train_csv']).format(**cfg)
     val_csv   = args.val_csv   or (cfg['data']['val_csv']).format(**cfg)
@@ -357,7 +324,7 @@ def main():
     fg_ids = [c for c in range(K) if c != 0]
 
     for ep in range(cfg['train']['epochs']):
-        tl = train_one_epoch(model, train_ld, optim, cfg, device, args.out, ep, args.preview_every)
+        tl = train_one_epoch(model, train_ld, optim, cfg, device, args.out, ep, previews_per_epoch * 5)
         overall_mean, present_mean = validate(model, val_ld, cfg, device, args.out, ep, previews_per_epoch)
 
         dice_fg = sum(overall_mean[c] for c in fg_ids) / max(len(fg_ids), 1)

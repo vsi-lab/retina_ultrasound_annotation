@@ -100,7 +100,6 @@ class SegCSV(Dataset):
     def __len__(self):
         return len(self.df)
 
-
     def __getitem__(self, i):
         row = self.df.iloc[i]
         ip = resolve_under_root_cfg(self.cfg, str(row["image_path"]))
@@ -108,9 +107,21 @@ class SegCSV(Dataset):
 
         img = _read_gray(ip)  # HxW uint8 (raw, no squeeze)
         msk = load_mask_as_ids(str(mp), self.cfg)  # HxW int64 ids (raw, no squeeze)
+        num_classes = int(self.cfg["data"]["num_classes"])
 
+        # TODO enable for 2 classes
+        # remap legacy ids -> new ids (bg=0, retina=1, choroid=2)
+        # old ids: 0:bg, 1:vitreous_humor, 2:retina, 3:optic_nerve, 4:choroid
+        # if (msk > 4).any():
+        #     raise ValueError(f"Mask has unexpected ids: {np.unique(msk[msk > 4])}")
+        # msk = np.asarray(msk, dtype=np.int64)
+        # msk = np.clip(msk, 0, 4)  # guard if any stray ids exist
+        # lut = np.array([0, 0, 1, 0, 2], dtype=np.int64)  # index by old id
+        # msk = lut[msk]
+        # if (msk >= num_classes).any() or (msk < 0).any():
+        #     raise ValueError(f"Post-remap ids out of range for K={K}: {np.unique(msk)}")
 
-        # ENABLE for 1280 * 800
+        # TODO ENABLE for 1280 * 800
         # H, W = img.shape[:2]
         # target = self.size_hw
         # if target and target != (0, 0):
@@ -119,12 +130,12 @@ class SegCSV(Dataset):
         #         img, msk = _resize_pair(img, msk, (th, tw))
 
 
-
         # Albumentations: operate on raw HxW (variable size)
         img_hwc = img[:, :, None]
         if self.augment is not None:
             out = self.augment(image=img_hwc, mask=msk)
             img_hwc, msk = out["image"], out["mask"]
+
 
         # Letterbox (preserve AR) to the model's fixed input size
         img_fixed, msk_fixed = _letterbox_pair(img_hwc[:, :, 0], msk, self.size_hw)
@@ -135,7 +146,6 @@ class SegCSV(Dataset):
         img_f = np.expand_dims(img_f, 0)  # 1xHxW
 
         # force ids valid
-        num_classes = int(self.cfg["data"]["num_classes"])
         msk_fixed = np.clip(msk_fixed.astype(np.int64), 0, num_classes - 1)
         # Optional: return raw path for preview panels
         if self.cfg.get("data", {}).get("return_path", False):
@@ -172,23 +182,12 @@ def load_mask_as_ids(mask_path: str, cfg: dict) -> np.ndarray:
         if set(uniq.tolist()) <= {0, 255}:
             ids = (ids > 127).astype(np.int64)
 
-        drop_classes = (cfg.get("data", {}).get("drop_classes") or [])
-        if drop_classes:
-            labels = cfg["data"]["labels"]
-            drop_ids = [int(labels[nm]) for nm in drop_classes if nm in labels]
-            print(drop_ids)
-            for did in drop_ids:
-                ids[ids == did] = 0  # send to background
-
         return ids
 
     # --- Color path: build BGR->id map from meta.json + labels ---
     if raw.ndim == 2:
         raw = cv2.cvtColor(raw, cv2.COLOR_GRAY2BGR)
     bgr = raw[:, :, :3]
-
-
-
 
     # load meta.json sitting under work_root
     meta_path = Path(cfg.get("work_root", ".")) / "meta.json"
@@ -235,11 +234,11 @@ def load_mask_as_ids(mask_path: str, cfg: dict) -> np.ndarray:
     # --- (Optional) tiny sanity check while you debug mapping ---
     # uniq = np.unique(ids)
     # print(f"[GT ids] {Path(mask_path).name}: " + " ".join(f"{u}:{(ids==u).sum()}" for u in uniq))
-    drop_classes = (cfg.get("data", {}).get("drop_classes") or [])
-    if drop_classes:
-        labels = cfg["data"]["labels"]
-        drop_ids = [int(labels[nm]) for nm in drop_classes if nm in labels]
-        for did in drop_ids:
-            ids[ids == did] = 0  # send to background
+    # drop_classes = (cfg.get("data", {}).get("drop_classes") or [])
+    # if drop_classes:
+    #     labels = cfg["data"]["labels"]
+    #     drop_ids = [int(labels[nm]) for nm in drop_classes if nm in labels]
+    #     for did in drop_ids:
+    #         ids[ids == did] = 0  # send to background
     return ids
 

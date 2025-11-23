@@ -16,7 +16,7 @@ from training.augments import build_val_augs
 from training.dataset import SegCSV
 from training.metrics import per_class_dice_from_logits, pixel_accuracy
 from utils import environment
-from utils.paths import resolve_under_root_cfg
+from utils.paths import resolve_under_root_cfg, clean_or_make
 from utils.vis_usg import save_preview_panel
 from typing import Dict, List
 
@@ -33,9 +33,9 @@ def main():
 
     eval_csv = str(resolve_under_root_cfg(cfg, cfg['data']['test_csv']))
 
-
     out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    clean_or_make(args.out)
+
     panels_dir = out_dir / "previews"
     panels_dir.mkdir(parents=True, exist_ok=True)
 

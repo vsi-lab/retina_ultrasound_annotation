@@ -177,12 +177,12 @@ def save_preview_panel(out_path: Path, img_t, gt_t, logits_t, cfg, meta_json=Non
 
     # Legend panel (rightmost)
     fg_ids = [cid for cid in sorted(id2color.keys()) if cid != 0]
-    legend_w, pad, row_h = 360, 12, 26
+    legend_w, pad, row_h = 560, 12, 50
     legend_h = pad*2 + row_h * (len(fg_ids) + 2)
     legend = np.zeros((max(H0, legend_h), legend_w, 3), np.uint8)
 
     cv2.putText(legend, "Dice (overall)  |  P-Dice (present)",
-                (pad, pad + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (220,220,220), 1, cv2.LINE_AA)
+                (pad, pad + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (220,220,220), 3, cv2.LINE_AA)
 
     y = pad + 16 + 8
     for cid in fg_ids:
@@ -192,12 +192,13 @@ def save_preview_panel(out_path: Path, img_t, gt_t, logits_t, cfg, meta_json=Non
         rgb = id2color.get(cid, (200, 200, 200))
         col_bgr = (int(rgb[2]), int(rgb[1]), int(rgb[0]))
         d    = overall_d.get(cid, 0.0)
+        do_s = f"{d:.3f}" if d is not None else "N/A"
         po   = present_d.get(cid, None)
         po_s = f"{po:.3f}" if po is not None else "N/A"
 
         cv2.rectangle(legend, (pad, y - 18), (pad + 18, y), col_bgr, thickness=-1)
-        cv2.putText(legend, f"{name:<16}  {d:0.3f}  |  {po_s}",
-                    (pad + 26, y - 2), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (240,240,240), 1, cv2.LINE_AA)
+        cv2.putText(legend, f"{name:<16}  {do_s}  |  {po_s}",
+                    (pad + 26, y - 2), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (240,240,240), 2, cv2.LINE_AA)
 
     # Header: print (short) path
     if raw_img_path:
