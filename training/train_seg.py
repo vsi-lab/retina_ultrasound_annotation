@@ -92,18 +92,9 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
                 pr_cnt  = counts(pr0)
                 sm_mean = torch.softmax(logits[0], dim=0).mean(dim=(1,2)).cpu().numpy()
 
-                print(f"[gt  ] {path0} | " + " ".join([f"{k}:{v}" for k,v in sorted(gt_cnt.items())]) + f" | tot:{tot}")
-                print(f"[pred] {path0} | " + " ".join([f"{k}:{v}" for k,v in sorted(pr_cnt.items())]) + f" | tot:{tot}")
-                print("[softmax_mean] " + " ".join([f"{i}:{sm_mean[i]:0.3f}" for i in range(len(sm_mean))]))
-
-                # optional: dump class-3 (optic nerve) masks for quick eyeballing
-                # dbg_dir = Path(out_dir) / "debug_train"
-                # dbg_dir.mkdir(parents=True, exist_ok=True)
-                # on_gt  = (gt0 == 3).astype(np.uint8) * 255
-                # on_pr  = (pr0 == 3).astype(np.uint8) * 255
-                # stem   = Path(path0).stem.replace("/", "_")
-                # cv2.imwrite(str(dbg_dir / f"{stem}_e{epoch:03d}_s{step:05d}_gt_on.png"), on_gt)
-                # cv2.imwrite(str(dbg_dir / f"{stem}_e{epoch:03d}_s{step:05d}_pr_on.png"), on_pr)
+                # print(f"[gt  ] {path0} | " + " ".join([f"{k}:{v}" for k,v in sorted(gt_cnt.items())]) + f" | tot:{tot}")
+                # print(f"[pred] {path0} | " + " ".join([f"{k}:{v}" for k,v in sorted(pr_cnt.items())]) + f" | tot:{tot}")
+                # print("[softmax_mean] " + " ".join([f"{i}:{sm_mean[i]:0.3f}" for i in range(len(sm_mean))]))
 
 
         # --- DEBUG: per-sample histograms + optic nerve dumps + color pred ---

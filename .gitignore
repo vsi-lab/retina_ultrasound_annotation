@@ -13,6 +13,10 @@ out_*.png
 # Local working directory where pipeline outputs are stored
 work_root/
 work_dir/
+third_party/
+vit_checkpoint/
+*.npz
+weights/
 
 # Virtual environments
 vret/

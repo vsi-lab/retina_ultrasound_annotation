@@ -1,5 +1,7 @@
 # models/model_factory.py
 from typing import Dict, Optional
+
+import numpy as np
 import torch
 
 import segmentation_models_pytorch as smp
@@ -95,57 +97,71 @@ def build_seg_model_from_cfg(cfg: Dict, device) -> torch.nn.Module:
         check_pretrained(model, encoder_weights)
         return model.to(device)
 
-    if name in ("transunet_pretrained", "transunet"):
-        # ---- Official-style TransUNet with ViT backbone and optional Google .npz init ----
-        try:
-            # Your file should expose a class compatible with the authors' repo
-            # (e.g., models/transunet.py having TransUNet(..., embed_dim, depth, heads, patch_size, img_size))
-            from models.transunet import TransUNet  # <- authors' style or faithful port
+    if name in ("transunet_npz", "transunet"):
+        # https://github.com/Beckschen/TransUNet
+        # refer to README.md for instructions
 
-            # Common defaults for ViT-B/16 @ 512 (multiple of 16). Adjust via YAML if needed.
-            mcfg = cfg.get("model", {})
-            embed_dim = int(mcfg.get("embed_dim", 768))  # ViT-B
-            depth = int(mcfg.get("depth", 12))
-            heads = int(mcfg.get("heads", 12))
-            patch_size = int(mcfg.get("patch_size", 16))
-            img_h, img_w = cfg["data"].get("resize", [512, 512])
-            img_size = int(mcfg.get("img_size", max(img_h, img_w)))  # ensure multiple of patch_size in your preprocess
-            base = int(mcfg.get("base", 32))  # decoder base channels (TransUNet dec side)
-            in_ch = int(mcfg.get("in_channels", 1))
-            num_classes = int(cfg["data"]["num_classes"])
+        # cloned it to : third_party/transunet
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "third_party" / "transunet"))
 
-            model = TransUNet(
-                in_ch=in_ch,
-                num_classes=num_classes,
-                base=base,
-                embed_dim=embed_dim,
-                depth=depth,
-                heads=heads,
-                patch_size=patch_size,
-                img_size=img_size,
-            )
+        # Official modules
+        from third_party.transunet.networks.vit_seg_modeling import VisionTransformer as ViT_seg
+        from third_party.transunet.networks.vit_seg_modeling import CONFIGS as CONFIGS_ViT_seg
+        from third_party.transunet.networks.vit_seg_configs import get_r50_b16_config
 
-            # Optional: Google ViT .npz weights
-            vit_npz = mcfg.get("vit_pretrained_npz", None)
-            _maybe_load_google_vit_npz(model, vit_npz)
+        # Choose config and matching .npz
+        # encoder_name: one of {"ViT-B_16", "R50+ViT-B_16" etc.
+        enc_name = mcfg.get("encoder_name", "R50-ViT-B_16")
 
-            print(f"[model] TransUNet (ViT) embed_dim={embed_dim} depth={depth} heads={heads} "
-                  f"patch={patch_size} img_size={img_size} | in_ch={in_ch} classes={num_classes}")
-            # No check_pretrained() here because ViT has no conv1
-            return model.to(device)
+        if enc_name not in CONFIGS_ViT_seg:
+            raise ValueError(f"Unknown TransUNet encoder_name '{enc_name}'. "
+                             f"Available: {list(CONFIGS_ViT_seg.keys())[:6]}...")
+        npz_path = None
 
-        except Exception as e:
-            print(f"[WARN] TransUNet import/init failed: {e}")
-            print("[WARN] Falling back to SMP UnetPlusPlus(resnet50, imagenet).")
-            model = smp.UnetPlusPlus(
-                encoder_name="resnet50",
-                encoder_weights="imagenet",
-                in_channels=1,
-                classes=int(cfg['data']['num_classes']),
-                activation=None,
-            )
-            check_pretrained(model, "imagenet")
-            return model.to(device)
+        config = get_r50_b16_config()
+        with config.unlocked():
+            # task specifics
+            config.n_classes = num_classes
+            config.n_skip = int(mcfg.get("n_skip", 3))
+            config.n_channels = int(mcfg.get("n_channels", 3)) or 1  # grayscale USG
+            print(f"[transunet] n_channels={config.n_channels}")
+            # image/patch geometry (ViT-B/16 @ img_size)
+            img_size = int(mcfg.get("img_size", 512))
+            config.img_size = img_size
+            config.patches.size = (16, 16)
+            gh = gw = img_size // 16
+            config.patches.grid = (gh, gw)  # required for the R50 hybrid
+
+            # ResNet-50 side (tuple, not int). Keep if helper didn’t already set it.
+            if tuple(getattr(config.resnet, "num_layers", ())) == () or \
+                    not isinstance(config.resnet.num_layers, tuple):
+                config.resnet.num_layers = (3, 4, 6, 3)
+            config.resnet.width_factor = int(mcfg.get("resnet_width", 1))
+
+            # pretrained ViT weights (.npz)
+            if "pretrained_npz" in cfg["model"]:
+                npz_path = mcfg.get("pretrained_npz").format(**cfg)
+                config.pretrained_path = npz_path
+
+
+        # Hybrid backbone (only for "R50+ViT-B_16")
+        model = ViT_seg(config, img_size=img_size, num_classes=num_classes)
+
+        if npz_path and Path(npz_path).exists():
+            print(f"[TransUNet] loading ViT weights from: {npz_path}")
+            try:
+                w = np.load(npz_path, allow_pickle=True)
+                model.load_from(weights=w)  # <-- this fork expects a dict-like, not a path
+                del w
+                print("[TransUNet] pretrained ViT weights loaded.")
+            except Exception as e:
+                print(f"[TransUNet][WARN] failed to load npz ({e}). Continuing with random init.")
+        else:
+            print("[TransUNet] no valid pretrained_npz provided; using random init.")
+
+        return model.to(device)
 
     if name == "unet":
         model = smp.Unet(

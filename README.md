@@ -23,8 +23,24 @@ Time permitting, these ones too
 - SegFormer / Mask2Former: These are newer, pure-transformer architectures. They are replacing U-Net in many benchmarks and available on huggingface
 - DeepLabV3+ : Available on Huggungface
 
-Note : Find them in Huggingface or segmentation-models-pytorch (smp) library 
 
+### How to get Pretrained TransUnet
+```
+# as a subfolder
+mkdir -p third_party && cd third_party
+
+[//]: # (git clone https://github.com/Beckschen/TransUNet.git transunet)
+Or better 
+# TransUNet (pinned to a known-good commit)
+pip install "git+https://github.com/Beckschen/TransUNet@192e441f2e2979ea289b4f521dd6d07a2d0f1f5f#egg=transunet"
+
+cd ../work_dir
+mkdir "vit_checkpoint/imagenet21k"  && cd "vit_checkpoint/imagenet21k"
+cd vit_checkpoint/imagenet21k
+
+# Hybrid ResNet50 + ViT-B/16 (TransUNet paper’s common choice)
+curl -L  'https://storage.googleapis.com/vit_models/imagenet21k/R50%2BViT-B_16.npz' -o R50+ViT-B_16.npz
+```
 ---
 
 ## Quick End-to-End Summary

@@ -50,7 +50,7 @@ def main():
     # data
     ds = SegCSV(eval_csv, cfg, augment=build_val_augs(cfg), is_train=False)
     bs = int(cfg['train']['batch_size'])
-    ld = DataLoader(ds, batch_size=bs, shuffle=False, num_workers=2, pin_memory=not torch.backends.mps.is_available())
+    ld = DataLoader(ds, batch_size=bs, shuffle=False, num_workers=int(cfg['train']['num_workers']), pin_memory=not torch.backends.mps.is_available())
 
     num_classes = int(cfg["data"]["num_classes"])
     labels_map = cfg["data"]["labels"]

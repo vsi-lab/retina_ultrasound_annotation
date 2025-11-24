@@ -44,25 +44,20 @@ data:
 
 model:
   # unet++ pretrained
-  name: unetpp
-  encoder_name: resnet50       # for SMP backbones (unetpp/unet); e.g., resnet34 | resnet50
-  encoder_weights: imagenet
+#  name: unetpp
+#  encoder_name: resnet50       # for SMP backbones (unetpp/unet); e.g., resnet34 | resnet50
+#  encoder_weights: imagenet
 
   # ViT
-#  name: transunet_pretrained
+  name: transunet_npz
   # Path to Google ViT .npz (ImageNet-21k pretraining). Example below is ViT-B/16.
-  vit_pretrained_npz: "{work_root}/pretrained/vit_base_patch16_224_in21k.npz"
-
-  # ViT/TransUNet knobs (matching typical ViT-B/16):
-  embed_dim: 768
-  depth: 12
-  heads: 12
-  patch_size: 16
-  img_size: 512   # make sure your letterbox/resize yields multiples of patch_size
-  # Decoder base channels (your TransUNet implementation often uses this)
-  base: 32
-  # Grayscale input
-  in_channels: 1
+  pretrained_npz: "{work_root}/vit_checkpoint/imagenet21k/ViT-L_16.npz"
+  encoder_name: "ViT-L_16"
+#  pretrained_npz: "{work_root}/vit_checkpoint/imagenet21k/R50+ViT-B_16.npz"
+#  encoder_name: "R50-ViT-B_16"
+  n_channels: 1
+  img_size: 512   # make sure  letterbox/resize yields multiples of patch_size
+  n_skip: 3
   # ViT/TransUNet ends
 
 aug:
@@ -84,6 +79,7 @@ train:
   previews_per_epoch: 2
   early_stop_patience: 5
   early_stop_min_delta: 0.001
+  num_workers : 0 # 0 required for Transunet
 
 loss:
   dice_weight: 0.7                         # Dice contribution

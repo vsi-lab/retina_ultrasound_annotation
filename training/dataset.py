@@ -144,6 +144,10 @@ class SegCSV(Dataset):
         img_f = img_fixed.astype(np.float32) / 255.0
         img_f = _normalize(img_f, self.cfg["data"].get("normalize", "zscore"))
         img_f = np.expand_dims(img_f, 0)  # 1xHxW
+        if "transunet_npz" in self.cfg["model"].get("name", "") and "R50-ViT-B_16" in self.cfg["model"].get("encoder_name", "") and self.cfg["model"].get("n_channels") == 3:
+            # feeding grayscale as 3 channels when using ImageNet weights
+            print(f"[transunet] n_channels={3}")
+            img_f = np.repeat(img_f, 3, axis=0)
 
         # force ids valid
         msk_fixed = np.clip(msk_fixed.astype(np.int64), 0, num_classes - 1)
