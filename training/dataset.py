@@ -96,7 +96,7 @@ class SegCSV(Dataset):
         self.is_train = is_train
         self.size_hw = tuple(self.cfg["data"].get("resize") or (0, 0))  # allow null/None
         self.labels  = cfg["data"].get("labels", {})
-
+        print("resize = ", self.size_hw)
     def __len__(self):
         return len(self.df)
 
@@ -139,7 +139,6 @@ class SegCSV(Dataset):
 
         # Letterbox (preserve AR) to the model's fixed input size
         img_fixed, msk_fixed = _letterbox_pair(img_hwc[:, :, 0], msk, self.size_hw)
-
         # Normalize -> tensor
         img_f = img_fixed.astype(np.float32) / 255.0
         img_f = _normalize(img_f, self.cfg["data"].get("normalize", "zscore"))

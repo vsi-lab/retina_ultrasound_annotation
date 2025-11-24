@@ -76,21 +76,21 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
 
         # --------------------# --------------------# --------------------# --------------------# --------------------# --------------------# --------------------
         # === DEBUG: per-class counts + softmax mean (1st item) ===
-        if step % max(1, preview_every or 50) == 0:
-            with torch.no_grad():
+        # if step % max(1, preview_every or 50) == 0:
+        #     with torch.no_grad():
                 # counts at model input resolution
-                gt0  = msk[0].detach().cpu().numpy()
-                pr0  = torch.argmax(logits[0], dim=0).detach().cpu().numpy()
-                H, W = gt0.shape
-                tot  = H * W
+                # gt0  = msk[0].detach().cpu().numpy()
+                # pr0  = torch.argmax(logits[0], dim=0).detach().cpu().numpy()
+                # H, W = gt0.shape
+                # tot  = H * W
 
-                def counts(arr):
-                    uniq, cnt = np.unique(arr, return_counts=True)
-                    return {int(u): int(c) for u, c in zip(uniq, cnt)}
+                # def counts(arr):
+                #     uniq, cnt = np.unique(arr, return_counts=True)
+                #     return {int(u): int(c) for u, c in zip(uniq, cnt)}
 
-                gt_cnt  = counts(gt0)
-                pr_cnt  = counts(pr0)
-                sm_mean = torch.softmax(logits[0], dim=0).mean(dim=(1,2)).cpu().numpy()
+                # gt_cnt  = counts(gt0)
+                # pr_cnt  = counts(pr0)
+                # sm_mean = torch.softmax(logits[0], dim=0).mean(dim=(1,2)).cpu().numpy()
 
                 # print(f"[gt  ] {path0} | " + " ".join([f"{k}:{v}" for k,v in sorted(gt_cnt.items())]) + f" | tot:{tot}")
                 # print(f"[pred] {path0} | " + " ".join([f"{k}:{v}" for k,v in sorted(pr_cnt.items())]) + f" | tot:{tot}")
