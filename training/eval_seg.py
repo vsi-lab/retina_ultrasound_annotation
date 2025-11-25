@@ -72,6 +72,9 @@ def main():
     per_class_overall: Dict[int, List[float]] = {c: [] for c in range(num_classes)}
     per_class_present: Dict[int, List[float]] = {c: [] for c in range(num_classes)}  # NaN if not present
     pixel_accs: List[float] = []
+    # Mean pixel share per class
+    gt_frac = {c: [] for c in range(num_classes)}
+    pred_frac = {c: [] for c in range(num_classes)}
 
     meta_json = None
     meta_path = Path(cfg.get("work_root", ".")) / "meta.json"
@@ -89,6 +92,14 @@ def main():
         for j in range(B):
             lo  = logits[j:j+1]  # [1,C,H,W]
             gt  = msk[j:j+1]     # [1,H,W]
+
+            # mean pixel per class
+            pred_np = torch.argmax(lo, dim=1)[0].cpu().numpy()
+            gt_np = gt[0].cpu().numpy()
+            tot = pred_np.size
+            for c in range(num_classes):
+                gt_frac[c].append(float((gt_np == c).sum()) / tot)
+                pred_frac[c].append(float((pred_np == c).sum()) / tot)
 
             def _hist_str(arr):
                 uniq, cnt = np.unique(arr, return_counts=True)
@@ -123,6 +134,8 @@ def main():
                 name = class_names[c]
                 row[f"dice_{name}"] = overall_d.get(c, 0.0)
                 row[f"diceP_{name}"] = present_d.get(c, None)
+                row[f"gtfrac_{name}"] = gt_frac[c][-1]
+                row[f"predfrac_{name}"] = pred_frac[c][-1]
             rows.append(row)
 
             # Accumulate for summary
@@ -234,6 +247,14 @@ def main():
         n_pres = gt_presence_counts.get(c, int(np.sum(~np.isnan(vals))))
         pct = (100.0 * n_pres / max(1, N))
         print(f"{'diceP_' + name:>18}: {np.nanmean(vals):.4f} ± {np.nanstd(vals):.4f}   (n={n_pres}, {pct:.1f}% present)")
+
+    print("\n-- Mean pixel share per class (GT | Pred) --")
+    for c in range(num_classes):
+        name = class_names[c] if c < len(class_names) else f"class_{c}"
+        gm, gs = np.mean(gt_frac[c]), np.std(gt_frac[c])
+        pm, ps = np.mean(pred_frac[c]), np.std(pred_frac[c])
+        print(f"{name:>18}: {gm:.3%} ± {gs:.3%}  |  {pm:.3%} ± {ps:.3%}")
+
 
 
 if __name__ == '__main__':

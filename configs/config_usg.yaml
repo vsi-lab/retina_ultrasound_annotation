@@ -29,8 +29,7 @@ data:
   resize: [512, 512]                       # Target spatial resolution (HxW)
 #  resize: [800, 1280]                       # Target spatial resolution (HxW)
 #  resize: [512, 512]                       # Target spatial resolution (HxW)
-#  normalize: zscore                        # Normalization type: zscore|minmax|log
-  normalize: minmax                        # ONLY FOR SEGFORMER
+  normalize: zscore                        # Normalization type: zscore|minmax|log  == minmax ONLY FOR SEGFORMER
   despeckle: median3                       # Apply median filter for speckle reduction
   fan_mask: none                           # For optional sector cropping (none|left|right|center)
   return_path: true
@@ -72,17 +71,17 @@ aug:
   p: 0.9                                   # Overall augmentation probability
 
 train:
-  batch_size: 4                            # Images per batch
-  epochs: 20  # 40                               # Number of training epochs
+  batch_size: 8                            # Images per batch
+  epochs: 80  # 40                               # Number of training epochs
   lr: 1.0e-3                               # Initial learning rate
-  weight_decay: 1.0e-5                     # L2 regularization
+  weight_decay: 1.0e-4                     # L2 regularization
   previews_per_epoch: 2
-  early_stop_patience: 5
+  early_stop_patience: 10
   early_stop_min_delta: 0.001
   num_workers : 0 # 0 required for Transunet
 
 loss:
-  dice_weight: 1.0                         # Dice contribution
+  dice_weight: 0.7                         # Dice contribution
 #  focal_weight: 0.3                        # Focal contribution
   focal_weight: 0.0                        # Focal contribution
   focal_gamma: 2.0                         # Focal focusing parameter
@@ -92,12 +91,7 @@ eval:
 
 # Split by Patient (avoid leakage)
 splits:
-  train: ["Patient1", "Patient2", "Patient3", "Patient4", "Patient8"]
-  val:   ["Patient5"]
-  test:  ["Patient6", "Patient7"]
+  train: ["Patient1", "Patient2", "Patient4", "Patient5"]
+  val:   ["Patient6", "Patient8"]
+  test:  ["Patient3", "Patient7"]
 
-#  train_frac: 0.7
-#  val_frac: 0.15
-#  test_frac: 0.15
-  seed: 42
-  stratify_by_rd: true                     # Ensures even distribution of RD cases

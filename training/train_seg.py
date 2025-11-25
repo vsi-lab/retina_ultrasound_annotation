@@ -10,6 +10,7 @@ import json
 import random
 from pathlib import Path
 
+from torch.optim import AdamW
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -151,11 +152,23 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
         # --------------------# --------------------# --------------------# --------------------# --------------------# --------------------# --------------------
 
         loss = composite_loss(
-            logits, msk, cfg['data']['num_classes'],
+            logits, msk,
+            cfg['data']['num_classes'],
             dice_w=cfg['loss']['dice_weight'],
             focal_w=cfg['loss']['focal_weight'],
             focal_gamma=cfg['loss']['focal_gamma']
         )
+
+
+        #  Loss = dice_w * Dice + ce_w * CE + focal_w * Focal lost  [CE is pixel level Cross Ent loss ]
+        # loss = composite_loss(
+        #     logits, msk, num_classes=K,
+        #     dice_w=cfg['loss']['dice_weight'], ce_w=0.3, focal_w=cfg['loss']['focal_weight'],
+        #     include_bg_in_dice=False,
+        #     ignore_index=None,  # IMPORTANT: do NOT ignore 0; we want bg in CE
+        #     bg_weight=0.3,  # tweak 0.2–0.5 as needed
+        #     dynamic_ce_weights=None  # or "batch_invfreq" if you want auto weights
+        # )
         # TODO EXPERIMENTAL IF REDUCED CLASSES
         # --- Normalize if the underlying CE/Focal used 'sum' (keeps numbers sane)
         # H, W = img.shape[-2], img.shape[-1]
@@ -198,7 +211,7 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
         if preview_every and (step % preview_every == 0):
             # If we have a path, pass it through so left column shows original
             save_preview_panel(
-                Path(out_dir) / f"preview_train_e{epoch:03d}_s{step:05d}.png",
+                Path(out_dir) / "previews" / f"preview_train_e{epoch:03d}_s{step:05d}.png",
                 img[0].detach().cpu(),
                 msk[0].detach().cpu(),
                 logits[0].detach().cpu(),
@@ -299,8 +312,35 @@ def main():
                           shuffle=True, num_workers=num_workers, pin_memory=pin)
     val_ld = DataLoader(val_ds, batch_size=cfg['train']['batch_size'],
                         shuffle=False, num_workers=num_workers, pin_memory=pin)
+    if "unetpp" in  cfg.get("model")['name']:
+        base_lr = 3e-4  # decoder/head
+        enc_lr = base_lr * 0.1
 
-    optim = torch.optim.Adam(model.parameters(), lr=cfg['train']['lr'],
+        optim = AdamW([
+            {"params": model.encoder.parameters(), "lr": enc_lr},
+            {"params": model.decoder.parameters(), "lr": base_lr},
+            {"params": model.segmentation_head.parameters(), "lr": base_lr},
+        ], lr=base_lr, weight_decay=cfg['train']['weight_decay'])
+    elif "transunet" in cfg.get("model")['name']:
+        base_lr = 3e-4
+        enc_lr = base_lr * 0.1
+
+        # TransUNet encoder is the ViT/Hybrid block
+        enc_params = []
+        if hasattr(model, "transformer"):
+            enc_params += list(model.transformer.parameters())
+        elif hasattr(model, "encoder"):
+            enc_params += list(model.encoder.parameters())
+
+        enc_ids = {id(p) for p in enc_params}
+        dec_params = [p for p in model.parameters() if id(p) not in enc_ids]
+
+        optim = AdamW([
+            {"params": enc_params, "lr": enc_lr},
+            {"params": dec_params, "lr": base_lr},
+        ], lr=base_lr, weight_decay=cfg['train']['weight_decay'])
+    else:
+        optim     = torch.optim.Adam(model.parameters(), lr=cfg['train']['lr'],
                              weight_decay=cfg['train']['weight_decay'])
 
     # knobs
