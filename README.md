@@ -24,7 +24,8 @@ https://pmc.ncbi.nlm.nih.gov/articles/PMC11875030/
 **Next steps**
 - TransUnet pipeline, cropping to reduce black background as much possible
 - Larger 768x768 images
-- Use the mDice calculations
+- Use the  mean Dice calculations throughout (train + eval)
+- Experiment with Boundary Aware Seg + uncertainty Seg. 
 - Multi task Seg + classification enhancement 
   - encoder + spatial RD gating (F * P_RD) → GAP → MLP
 ```test       
@@ -258,19 +259,6 @@ python -m utils.preview_predictions --num_samples 6 --config configs/config_usg.
 # 4a) Classification : feature based E2E
 python -m training.feature_clf --mode all --config configs/config_usg.yaml --ckpt  work_dir/runs/seg_transunet/best.ckpt --train_csv work_dir/metadata/train.csv --val_csv   work_dir/metadata/val.csv --test_csv  work_dir/metadata/test.csv --out_dir work_dir/runs/cls_rd --task rd_vh_normal --models lr,rf 
 
----- OLD 
-
-# 5) Extract region features from predicted masks  → converts predictions to 6–7 tabular features + has_rd_gt label.
-python -m features.extract_features --config configs/config_usg.yaml  --ckpt work_dir/runs/seg_transunet/best.ckpt  --csv  work_dir/data/train.csv --out work_dir/features/train_feats.parquet
-
-python -m features.extract_features --config configs/config_usg.yaml  --ckpt work_dir/runs/seg_transunet/best.ckpt  --csv  work_dir/data/val.csv   --out work_dir/features/val_feats.parquet
-
-python -m features.extract_features --config configs/config_usg.yaml  --ckpt work_dir/runs/seg_transunet/best.ckpt  --csv  work_dir/data/test.csv  --out work_dir/features/test_feats.parquet
-
-# 6) Train & evaluate RD detector  → learns RD presence using those features.
-python -m classify.train_cls --train work_dir/features/train_feats.parquet  --val   work_dir/features/val_feats.parquet --out   work_dir/runs/cls_rd
-
-python -m classify.eval_cls  --ckpt  work_dir/runs/cls_rd/model.joblib    --test  work_dir/features/test_feats.parquet  --out   work_dir/runs/cls_rd/eval
 ```
 
 ### Preview augmentations

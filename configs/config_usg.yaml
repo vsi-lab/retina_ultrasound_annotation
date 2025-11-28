@@ -46,16 +46,15 @@ data:
 
 model:
   # unet++ pretrained
-#  name: unetpp
-#  encoder_name: resnet50        # for SMP backbones (unetpp/unet); e.g., resnet50 | resnet101 | efficientnet-b4 | timm-efficientnet-b5
-#  encoder_weights: imagenet
+  name: unetpp
+  encoder_name: resnet50        # for SMP backbones (unetpp/unet); e.g., resnet50 | resnet101 | efficientnet-b4 | timm-efficientnet-b5
+  encoder_weights: imagenet
 
 #  name: segformer_b2 # <-- does not work yet
   # ViT
-  name: transunet_npz
-  # Path to Google ViT .npz (ImageNet-21k pretraining). Example below is ViT-B/16.
-  pretrained_npz: "{work_root}/vit_checkpoint/imagenet21k/R50+ViT-B_16.npz"
-  encoder_name: "R50-ViT-B_16"
+#  name: transunet_npz
+#  pretrained_npz: "{work_root}/vit_checkpoint/imagenet21k/R50+ViT-B_16.npz"  # # Path to Google ViT .npz (ImageNet-21k pretraining). Example below is ViT-B/16.
+#  encoder_name: "R50-ViT-B_16"
   n_channels: 3 # 3 or 1. Note this does not change TransUnet.config.n_channels (it remains 1)
   n_skip: 3
   # ViT/TransUNet ends
