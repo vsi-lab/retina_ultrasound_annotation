@@ -4,19 +4,20 @@ work_root: "/Users/saurav1/python/masters/arizona/2nd/fall/retina_ultrasound_ann
 
 
 data:
-  num_classes: 5                           # Number of segmentation classes (excluding background)
-  class_names: ["background", "vitreous_humor", "retina", "optic_nerve", "choroid"]
-  labels:                                  # Mapping from class name to integer ID
-    background: 0
-    vitreous_humor: 1
-    retina: 2
-    optic_nerve: 3
-    choroid: 4
-#  class_names: ["background", "retina", "choroid"]
+#  num_classes: 5                           # Number of segmentation classes (excluding background)
+#  class_names: ["background", "vitreous_humor", "retina", "optic_nerve", "choroid"]
 #  labels:                                  # Mapping from class name to integer ID
 #    background: 0
-#    retina: 1   # shift 2 to 1
-#    choroid: 2  # shift 4 to 2
+#    vitreous_humor: 1
+#    retina: 2
+#    optic_nerve: 3
+#    choroid: 4
+  num_classes: 3                           # Number of segmentation classes (excluding background)
+  class_names: ["background", "retina", "choroid"]
+  labels:                                  # Mapping from class name to integer ID
+    background: 0
+    retina: 1
+    choroid: 2
 
   work_dir: "{work_root}"                       # Base directory for current experiment
   out_dir: data                            # Folder for generated CSVs (train/val/test)
@@ -27,8 +28,8 @@ data:
   test_csv:  "{work_root}/metadata/test.csv"
 
   resize: [512, 512]                       # Target spatial resolution (HxW)
+#  resize: [768, 768]                       # Target spatial resolution (HxW)
 #  resize: [800, 1280]                       # Target spatial resolution (HxW)
-#  resize: [512, 512]                       # Target spatial resolution (HxW)
   normalize: zscore                        # Normalization type: zscore|minmax|log  == minmax ONLY FOR SEGFORMER
   despeckle: median3                       # Apply median filter for speckle reduction
   fan_mask: none                           # For optional sector cropping (none|left|right|center)
@@ -45,17 +46,17 @@ data:
 
 model:
   # unet++ pretrained
-  name: unetpp
-  encoder_name: resnet101        # for SMP backbones (unetpp/unet); e.g., resnet50 | resnet101 | efficientnet-b4 | timm-efficientnet-b5
-  encoder_weights: imagenet
+#  name: unetpp
+#  encoder_name: resnet50        # for SMP backbones (unetpp/unet); e.g., resnet50 | resnet101 | efficientnet-b4 | timm-efficientnet-b5
+#  encoder_weights: imagenet
 
 #  name: segformer_b2 # <-- does not work yet
   # ViT
-#  name: transunet_npz
+  name: transunet_npz
   # Path to Google ViT .npz (ImageNet-21k pretraining). Example below is ViT-B/16.
-#  pretrained_npz: "{work_root}/vit_checkpoint/imagenet21k/R50+ViT-B_16.npz"
-#  encoder_name: "R50-ViT-B_16"
-  n_channels: 1
+  pretrained_npz: "{work_root}/vit_checkpoint/imagenet21k/R50+ViT-B_16.npz"
+  encoder_name: "R50-ViT-B_16"
+  n_channels: 3 # 3 or 1. Note this does not change TransUnet.config.n_channels (it remains 1)
   n_skip: 3
   # ViT/TransUNet ends
 
@@ -71,12 +72,12 @@ aug:
   p: 0.9                                   # Overall augmentation probability
 
 train:
-  batch_size: 8                            # Images per batch
-  epochs: 80  # 40                               # Number of training epochs
+  batch_size: 6                            # Images per batch
+  epochs: 200  # 40                               # Number of training epochs
   lr: 1.0e-3                               # Initial learning rate
   weight_decay: 1.0e-4                     # L2 regularization
   previews_per_epoch: 2
-  early_stop_patience: 10
+  early_stop_patience: 50
   early_stop_min_delta: 0.001
   num_workers : 0 # 0 required for Transunet
 
@@ -89,9 +90,20 @@ loss:
 eval:
   threshold: 0.5                           # Sigmoid threshold for binary segmentation
 
-# Split by Patient (avoid leakage)
+# Split by Patient (avoid leakage) < TransUnet Seg+cls & USFM Seg only
 splits:
-  train: ["Patient1", "Patient2", "Patient4", "Patient5"]
-  val:   ["Patient6", "Patient8"]
-  test:  ["Patient3", "Patient7"]
+  train: ["Patient2", "Patient3", "Patient5", "Patient6", "Patient8"]
+  val:   ["Patient1"]
+  test:  ["Patient4", "Patient7"]
 
+
+# For USFM in colab, the Cls split needs to have data for n/rd/vh classes in train, test, val. SO this below is a suggested split.
+# But we cannot split this data to have all.... So "Due to limited class counts, we used a patient-level stratified
+#     train/validation split ensuring all classes in both sets. No independent test set was created; the metrics
+#     reported are validation metrics and may overestimate generalization.
+#     We’ll add test evaluation when more labeled cases are available."
+#SPLIT = {
+#  'trainning_set': ['Patient1','Patient2','Patient3','Patient6','Patient5'],
+#  'test_set':       [ ],
+#  'val_set':      ['Patient4','Patient7', 'Patient8'],
+#}

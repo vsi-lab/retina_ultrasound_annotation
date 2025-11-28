@@ -110,16 +110,17 @@ class SegCSV(Dataset):
         num_classes = int(self.cfg["data"]["num_classes"])
 
         # TODO enable for 2 classes
-        # remap legacy ids -> new ids (bg=0, retina=1, choroid=2)
+        # remap legacy 5-class ids -> 3-class ids when requested
         # old ids: 0:bg, 1:vitreous_humor, 2:retina, 3:optic_nerve, 4:choroid
-        # if (msk > 4).any():
-        #     raise ValueError(f"Mask has unexpected ids: {np.unique(msk[msk > 4])}")
-        # msk = np.asarray(msk, dtype=np.int64)
-        # msk = np.clip(msk, 0, 4)  # guard if any stray ids exist
-        # lut = np.array([0, 0, 1, 0, 2], dtype=np.int64)  # index by old id
-        # msk = lut[msk]
-        # if (msk >= num_classes).any() or (msk < 0).any():
-        #     raise ValueError(f"Post-remap ids out of range for K={K}: {np.unique(msk)}")
+        # new ids: 0:bg (bg+VH+ON), 1:retina, 2:choroid
+        if num_classes == 3:
+            msk = np.asarray(msk, dtype=np.int64)
+            if (msk > 4).any():
+                raise ValueError(f"Mask has unexpected ids: {np.unique(msk[msk > 4])}")
+            msk = np.clip(msk, 0, 4)
+            lut = np.array([0, 0, 1, 0, 2], dtype=np.int64)
+            msk = lut[msk]
+
 
         # TODO ENABLE for 1280 * 800
         # H, W = img.shape[:2]
@@ -143,9 +144,11 @@ class SegCSV(Dataset):
         img_f = img_fixed.astype(np.float32) / 255.0
         img_f = _normalize(img_f, self.cfg["data"].get("normalize", "zscore"))
         img_f = np.expand_dims(img_f, 0)  # 1xHxW
+
+        # TODO : transunet 3 channel repeat for greyscale experiment
         if "transunet_npz" in self.cfg["model"].get("name", "") and "R50-ViT-B_16" in self.cfg["model"].get("encoder_name", "") and self.cfg["model"].get("n_channels") == 3:
             # feeding grayscale as 3 channels when using ImageNet weights
-            print(f"[transunet] n_channels={3}")
+            # print(f"[transunet] n_channels={3}")
             img_f = np.repeat(img_f, 3, axis=0)
 
         # force ids valid
@@ -234,14 +237,5 @@ def load_mask_as_ids(mask_path: str, cfg: dict) -> np.ndarray:
     C = int(dm.get("num_classes", max(labels_map.values()) + 1))
     ids = np.clip(ids, 0, C - 1).astype(np.int64)
 
-    # --- (Optional) tiny sanity check while you debug mapping ---
-    # uniq = np.unique(ids)
-    # print(f"[GT ids] {Path(mask_path).name}: " + " ".join(f"{u}:{(ids==u).sum()}" for u in uniq))
-    # drop_classes = (cfg.get("data", {}).get("drop_classes") or [])
-    # if drop_classes:
-    #     labels = cfg["data"]["labels"]
-    #     drop_ids = [int(labels[nm]) for nm in drop_classes if nm in labels]
-    #     for did in drop_ids:
-    #         ids[ids == did] = 0  # send to background
     return ids
 

@@ -220,6 +220,7 @@ def build_index(work_dir: Path) -> pd.DataFrame:
                 "mask_path":  str(mp.relative_to(work_dir)),
                 "patient_id": patient_id,
                 "scan_id":    ip.stem,
+                "diagnosis": "" # TODO read from ann*json or manually add later
             })
     return pd.DataFrame(rows)
 

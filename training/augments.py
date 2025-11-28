@@ -1,8 +1,5 @@
 # training/augments.py
 import albumentations as A
-import numpy as np
-
-from utils.usg_transforms import augment_pair
 
 """
 Albumentations augmentation policies for ultrasound segmentation.

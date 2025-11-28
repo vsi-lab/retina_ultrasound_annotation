@@ -13,24 +13,135 @@ from torch.utils.data import DataLoader
 from models.model_factory import build_seg_model_from_cfg
 from training.augments import build_val_augs
 from training.dataset import SegCSV
-from training.metrics import pixel_accuracy
 from utils import environment
-from utils.region_features import compute_region_features, derive_labels_from_gt
+from features.region_features import compute_region_features, derive_labels_from_gt
 from utils.paths import resolve_under_root_cfg
 from utils.vis_usg import save_preview_panel
+"""
+All-in-one (extract → train → test):
+python -m training.feature_clf --mode all --config configs/config_usg.yaml --ckpt  work_dir/runs/seg_transunet/best.ckpt --train_csv work_dir/metadata/train.csv --val_csv   work_dir/metadata/val.csv --test_csv  work_dir/metadata/test.csv --out_dir work_dir/runs/cls_rd --task rd_vh_normal --models lr,rf
+  
+  
+Just extract features (any split):
+python -m training.feature_clf --mode extract --config configs/config_usg.yaml --ckpt work_dir/runs/seg_transunet/best.ckpt --train_csv work_dir/metadata/train.csv --val_csv   work_dir/metadata/val.csv --test_csv  work_dir/metadata/test.csv --out_dir  work_dir/features --save_panels
+  
+  
+Train+eval later from saved features:
+python -m training.feature_clf \
+  --mode train \
+  --out_dir work_dir/runs/cls_rd \
+  --train_feats work_dir/features/features_train.parquet \
+  --val_feats   work_dir/features/features_val.parquet \
+  --models lr,rf
 
+python -m training.feature_clf \
+  --mode eval \
+  --out_dir work_dir/runs/cls_rd \
+  --test_feats work_dir/features/features_test.parquet    
+  
+  
+3-class classification (Normal / VH-only / RD):
+python -m training.feature_clf \
+  --mode all \
+  --config configs/config_usg.yaml \
+  --ckpt   work_dir/runs/seg_transunet/best.ckpt \
+  --train_csv work_dir/metadata/train.csv \
+  --val_csv   work_dir/metadata/val.csv \
+  --test_csv  work_dir/metadata/test.csv \
+  --out_dir   work_dir/runs/cls_rd_vh \
+  --task rd_vh_normal \
+  --models lr,rf
+"""
 # --- optional sklearn
-try:
-    from sklearn.pipeline import Pipeline
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.neighbors import KNeighborsClassifier
-    from sklearn.metrics import classification_report, f1_score
-    import joblib
-    SK_OK = True
-except Exception:
-    SK_OK = False
+SK_OK = False
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+import joblib
+SK_OK = True
+
+from pathlib import Path
+
+def _normalize_rel_path(p: str, work_dir: Path) -> str:
+    """Return path relative to work_dir if possible, with forward slashes."""
+    p = str(p).replace("\\", "/")
+    try:
+        rp = Path(p).resolve()
+        wd = work_dir.resolve()
+        try:
+            return str(rp.relative_to(wd)).replace("\\", "/")
+        except Exception:
+            return str(rp).replace("\\", "/")
+    except Exception:
+        return p
+
+def _load_labels_table(labels_csv: str, work_dir: Path, label_col: str = "diagnosis") -> pd.DataFrame:
+    df = pd.read_csv(labels_csv)
+    if "image_path" not in df.columns:
+        raise ValueError("labels_csv must contain 'image_path'")
+    if label_col not in df.columns:
+        raise ValueError(f"labels_csv must contain '{label_col}'")
+
+    # normalize
+    lab_str = df[label_col].astype(str).str.strip().str.lower()
+    ymap = {"n": 0, "rd": 1, "vh": 2}
+    y = lab_str.map(ymap)
+    if y.isna().any():
+        bad = sorted(df.loc[y.isna(), label_col].unique().tolist())
+        raise ValueError(f"Unrecognized labels in '{label_col}': {bad}")
+
+    df = df.assign(y=y, y_name=lab_str)
+    df["image_path"] = df["image_path"].apply(lambda s: _normalize_rel_path(s, work_dir))
+    return df[["image_path", "y", "y_name"]]
+
+def _rel_from_workdir(cfg: dict, p: str) -> str:
+    """Return path relative to cfg['data']['work_dir']; else from images/ or masks/ anchor."""
+    root = Path(cfg["data"]["work_dir"]).resolve()
+    pp = Path(p)
+    try:
+        return str(pp.resolve().relative_to(root)).replace("\\", "/")
+    except Exception:
+        parts = pp.resolve().parts  # tuple of path components
+        for anchor in ("images", "masks"):
+            if anchor in parts:
+                i = parts.index(anchor)
+                return "/".join(parts[i:])  # e.g. images/PatientX/Subject 1.1.png
+        return pp.name  # last resort
+
+
+def _merge_labels_into_feats(df_feats: pd.DataFrame,
+                             df_labels: pd.DataFrame,
+                             work_dir: Path,
+                             split_name: str) -> pd.DataFrame:
+    if "image_path" not in df_feats.columns:
+        raise ValueError(f"[{split_name}] features missing 'image_path'; ensure extraction stored it.")
+
+    df_feats = df_feats.copy()
+    df_feats["image_path"] = df_feats["image_path"].apply(lambda s: _normalize_rel_path(s, work_dir))
+    out = df_feats.merge(df_labels, on="image_path", how="left", suffixes=("", "_lab"))
+
+    if out["y"].isna().any():
+        missing = out.loc[out["y"].isna(), "image_path"].tolist()
+        raise ValueError(f"[{split_name}] {len(missing)} images missing diagnosis in labels_csv. First few: {missing[:5]}")
+
+    out["y"] = out["y"].astype(int)
+
+    # ensure y_name matches supervised y (ignore any rule-based yname_rule)
+    if "y_na    me" not in out.columns or out["y_name"].isna().any():
+        # fill from numeric map
+        inv = {0: "n", 1: "rd", 2: "vh"}
+        out["y_name"] = out["y"].map(inv)
+    else:
+        # overwrite to be safe
+        inv = {0: "n", 1: "rd", 2: "vh"}
+        out["y_name"] = out["y"].map(inv)
+
+    # print(f"[debug:{split_name}] label counts:", out["y_name"].value_counts(dropna=False).to_dict())
+    # print(out[["image_path", "y", "y_name"]].head(5).to_string(index=False))
+
+    return out
 
 def _read_df(path: str) -> pd.DataFrame:
     try:
@@ -91,15 +202,22 @@ def _extract_one_split(cfg: Dict, ckpt: str, csv_path: str, out_path: Path, save
                 ignore_background_id=0
             )
 
-            # labels from GT
-            y, y_name = derive_labels_from_gt(msk[j].cpu().numpy(), labels_map, task=cfg.get("feature_clf", {}).get("task", "rd_binary"))
-            feats["y"] = int(y)
-            feats["y_name"] = y_name
+            # labels from GT (rule-based): keep under separate names
+            y_rule, yname_rule = derive_labels_from_gt(
+                msk[j].cpu().numpy(), labels_map, task=cfg.get("feature_clf", {}).get("task", "rd_binary")
+            )
+            feats["y_rule"] = int(y_rule)
+            feats["yname_rule"] = yname_rule
 
-            # add some meta if present
-            if "image_path" in ds.df.columns:
-                feats["image_path"] = ds.df.iloc[gidx]["image_path"]
-
+            # always carry image_path for later label merge (normalized relative to work_dir)
+            try:
+                raw_ip = ds.df.iloc[gidx]["image_path"]
+                # get absolute path using your resolver (handles already-relative inputs too)
+                ip_abs = resolve_under_root_cfg(cfg, str(raw_ip))
+                # store RELATIVE path like: images/PatientX/Subject 1.1.png
+                feats["image_path"] = _rel_from_workdir(cfg, str(ip_abs))
+            except Exception:
+                pass
             rows.append(feats)
 
             if save_panels:
@@ -116,6 +234,11 @@ def _extract_one_split(cfg: Dict, ckpt: str, csv_path: str, out_path: Path, save
                     )
                 except Exception:
                     pass
+            # if gidx == 0:
+            #     print("[dbg] work_dir:", Path(cfg["data"]["work_dir"].format(**cfg)).resolve())
+            #     print("[dbg] raw_ip:", raw_ip)
+            #     print("[dbg] ip_abs:", ip_abs)
+            #     print("[dbg] feats.image_path:", feats["image_path"])
             gidx += 1
 
     df = pd.DataFrame(rows)
@@ -146,9 +269,29 @@ def _build_models(which: str, include_knn: bool=False):
     return models
 
 def _eval_classification(y_true, y_pred, labels_names=None):
-    avg = "macro" if len(np.unique(y_true)) > 2 else "binary"
-    rep = classification_report(y_true, y_pred, digits=4, zero_division=0, target_names=labels_names)
-    f1  = f1_score(y_true, y_pred, average=avg, zero_division=0)
+    import numpy as np
+    from sklearn.metrics import classification_report, f1_score
+
+    uniq = np.unique(y_true)
+    uniq_list = sorted(uniq.tolist())
+
+    # Only use binary average when labels are exactly {0,1}
+    if len(uniq_list) == 2 and set(uniq_list) == {0, 1}:
+        avg = "binary"
+    else:
+        avg = "macro"  # safe for {0,2}, 3-class, etc.
+
+    # Make reports stable across subsets: pass explicit labels
+    rep = classification_report(
+        y_true, y_pred,
+        labels=uniq_list,
+        target_names=(labels_names if labels_names and len(labels_names) == len(uniq_list) else None),
+        digits=4, zero_division=0
+    )
+    f1 = f1_score(
+        y_true, y_pred,
+        labels=uniq_list, average=avg, zero_division=0
+    )
     return rep, f1
 
 def main():
@@ -174,9 +317,27 @@ def main():
     ap.add_argument("--test_feats")
     # predict mode
     ap.add_argument("--clf_ckpt")
+    ap.add_argument('--labels_csv', default=None,
+                    help="CSV with per-image diagnosis; defaults to <work_dir>/metadata/labels.csv")
+    ap.add_argument('--label_col', default='diagnosis',
+                    help="Column name in labels CSV (default: diagnosis)")
     args = ap.parse_args()
+    print(f"[feature_clf] args: {args}")
 
     out_dir = Path(args.out_dir); out_dir.mkdir(parents=True, exist_ok=True)
+
+    # if args.labels_csv is None:
+    #     args.labels_csv = Path("work_dir") / "metadata" / "labels.csv"
+    cfg_for_defaults = None
+    if args.config and os.path.exists(args.config):
+        cfg_for_defaults = yaml.safe_load(open(args.config, "r"))
+
+    if args.labels_csv is None:
+        if cfg_for_defaults and "data" in cfg_for_defaults and "work_dir" in cfg_for_defaults["data"]:
+            args.labels_csv = str(Path(cfg_for_defaults["data"]["work_dir"].format(**cfg_for_defaults)) / "metadata" / "labels.csv")
+        else:
+            args.labels_csv = "metadata/labels.csv"  # reasonable fallback
+
 
     # ---- EXTRACT ----
     feats_paths = {}
@@ -206,9 +367,25 @@ def main():
         df_tr = _read_df(str(train_feats))
         df_vl = _read_df(str(val_feats))
 
+        # Optional supervised override from labels.csv for 3-class task
+        if (args.task == "rd_vh_normal") and (args.labels_csv is not None):
+            if args.config:
+                cfg_for_wd = yaml.safe_load(open(args.config, "r"))
+                work_dir = Path(cfg_for_wd["data"]["work_dir"]).resolve()
+            else:
+                work_dir = Path(".").resolve()
+            df_lab = _load_labels_table(args.labels_csv, work_dir, args.label_col)
+            df_tr = _merge_labels_into_feats(df_tr, df_lab, work_dir, "train")
+            df_vl = _merge_labels_into_feats(df_vl, df_lab, work_dir, "val")
+
         X_tr, y_tr, feat_cols = _make_Xy(df_tr)
         X_vl = _read_df(str(val_feats)).reindex(columns=feat_cols, fill_value=0.0).select_dtypes(include=[np.number]).values.astype(np.float32)
         y_vl = df_vl["y"].astype(int).values
+
+        # sanity: require ≥2 classes in train
+        if np.unique(y_tr).size < 2:
+            counts = dict(zip(*np.unique(y_tr, return_counts=True)))
+            raise ValueError(f"Train split has <2 classes after labeling. Class counts: {counts}")
 
         # label names for pretty reports if available
         names = None
@@ -222,8 +399,10 @@ def main():
         best = None
         results = []
         for name, model in _build_models(args.models, include_knn=args.include_knn):
+            print(f"[model] name: {name}")
             model.fit(X_tr, y_tr)
             yhat = model.predict(X_vl)
+            print("[debug] val classes:", sorted(np.unique(y_vl).tolist()))
             rep, f1 = _eval_classification(y_vl, yhat, labels_names=names)
             print(f"\n=== {name.upper()} (val) ===\n{rep}\nmacro-F1={f1:.4f}")
             results.append({"model": name, "val_macro_f1": float(f1)})
@@ -244,11 +423,21 @@ def main():
         assert SK_OK, "scikit-learn missing"
         job = joblib.load(out_dir / "model.joblib")
         df_te = _read_df(str(test_feats))
+        if (args.task == "rd_vh_normal") and (args.labels_csv is not None):
+            if args.config:
+                cfg_for_wd = yaml.safe_load(open(args.config, "r"))
+                work_dir = Path(cfg_for_wd["data"]["work_dir"]).resolve()
+            else:
+                work_dir = Path(".").resolve()
+            df_lab = _load_labels_table(args.labels_csv, work_dir, args.label_col)
+            df_te = _merge_labels_into_feats(df_te, df_lab, work_dir, "test")
+
         X_te = df_te.drop(columns=[c for c in ["y","y_name","image_path"] if c in df_te.columns], errors="ignore")
         X_te = X_te.reindex(columns=job["features"], fill_value=0.0).select_dtypes(include=[np.number]).values.astype(np.float32)
         y_te = df_te["y"].astype(int).values
 
         yhat = job["model"].predict(X_te)
+        print("[debug] test classes:", sorted(np.unique(y_te).tolist()))
         rep, f1 = _eval_classification(y_te, yhat)
         print(f"\n=== TEST ===\n{rep}\nmacro-F1={f1:.4f}")
         (out_dir / "test_report.txt").write_text(rep)

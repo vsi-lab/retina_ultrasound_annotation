@@ -107,11 +107,11 @@ def derive_labels_from_gt(
 
     if task == "rd_binary":
         y = 1 if has_rd else 0
-        return y, ("RD" if y==1 else "Normal")
+        return y, ("rd" if y==1 else "n")
 
     # rd_vh_normal
     if has_rd:
-        return 2, "RD"
+        return 2, "rd"
     if has_vh:
-        return 1, "VH-only"
-    return 0, "Normal"
+        return 1, "vh"
+    return 0, "n"

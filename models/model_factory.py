@@ -93,7 +93,7 @@ def build_seg_model_from_cfg(cfg: Dict, device) -> torch.nn.Module:
             classes=num_classes,
             activation=None,
         )
-        print(f"[model] UnetPlusPlus encoder weights={encoder_weights}")
+        print(f"[model] UnetPlusPlus encoder {encoder_name} weights={encoder_weights} ")
         check_pretrained(model, encoder_weights)
         return model.to(device)
 

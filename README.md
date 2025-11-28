@@ -1,5 +1,7 @@
 ### TESTS : [![ci](https://github.com/vsi-lab/retina_ultrasound_annotation/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/vsi-lab/retina_ultrasound_annotation/actions/workflows/ci.yml)
 
+
+
 # Retinal Ultrasound Segmentation
 
 This repository implements a segmentation pipeline for **retinal ultrasound (USG)** imaging.  
@@ -19,9 +21,41 @@ https://pmc.ncbi.nlm.nih.gov/articles/PMC11875030/
 - TransUnet : A very strong option here as noted in TVST 2025 study.
 - MedSAM / 2 : 
 
-Time permitting, these ones too
-- SegFormer / Mask2Former: These are newer, pure-transformer architectures. They are replacing U-Net in many benchmarks and available on huggingface
-- DeepLabV3+ : Available on Huggungface
+**Next steps**
+- TransUnet pipeline, cropping to reduce black background as much possible
+- Larger 768x768 images
+- Use the mDice calculations
+- Multi task Seg + classification enhancement 
+  - encoder + spatial RD gating (F * P_RD) → GAP → MLP
+```test       
+    Extend for multiclass VH + RD. 
+    
+    create a gate per class: P_D, P_VH, optionally P_other
+    Build gated features:
+	•	F_RD = F × P_RD
+	•	F_VH = F × P_VH
+	Then concatenate their pooled summaries:
+    
+        z_cls = concat(GAP(F), GAP(F_RD), GAP(F_VH)) → MLP
+  
+    Below for RD ()
+  	1.	encoder → F
+	2.	decoder(F) → seg_logits
+	3.	P = softmax(seg_logits) (or sigmoid for RD channel)
+	4.	Build attention-like features:
+        •	For RD-only:
+        •	P_RD = P[:, rd_class_idx, :, :]  (B, H, W)
+        •	P_RD = P_RD.unsqueeze(1) → (B, 1, H, W)
+        •	F_RD = F * P_RD
+        •	z_RD = GAP(F_RD)
+        •	Optionally also z_global = GAP(F)
+	5.	z_cls = concat(z_global, z_RD)
+	6.	MLP(z_cls) → class logits
+
+    Training:
+        •	Loss = λ_seg * L_seg + λ_cls * L_cls
+        •	Where L_cls is cross-entropy on {control, RD, VH}, etc.
+```
 
 
 ### How to get Pretrained TransUnet
@@ -41,6 +75,11 @@ cd vit_checkpoint/imagenet21k
 # Hybrid ResNet50 + ViT-B/16 (TransUNet paper’s common choice)
 curl -L  'https://storage.googleapis.com/vit_models/imagenet21k/R50%2BViT-B_16.npz' -o R50+ViT-B_16.npz
 ```
+
+----
+# USFM 
+FOR USFM colab setup, check the notebooks folder
+
 ---
 
 ## Quick End-to-End Summary
@@ -162,9 +201,16 @@ work_dir/
 
 ### Create CSVs automatically
 ```bash
-python -m utils.build_ultrasound_csvs --work_dir work_dir --config configs/config_usg.yaml
-Oe 
-python -m utils.build_ultrasound_csvs --work_dir work_dir --config configs/config_usg.yaml --labels_csv work_dir/metadata/disease_labels.csv
+E.g. this command would 
+	1.	scans work_dir/images & work_dir/masks,
+	2.	reads meta.json / obj_class_to_machine_color.json (for color→class mapping),
+	3.	converts color masks → id masks (if needed),
+	4.	computes sizes + class-presence stats (overall & by split),
+	5.	auto-selects a patient-wise split (or uses config if provided), and
+	6.	writes the splits.
+
+[//]: # (Replace test and val splits needed for patient ids )
+python -m tools.build_ultrasound_index --config configs/config_usg.yaml --test 3,8 --val 5 --out work_dir
 ```
 This pairs files by **matching filename stems** and writes:
 ```
@@ -173,6 +219,7 @@ work_dir/metadata/val.csv
 work_dir/metadata/test.csv
 work_dir/metadata/labels.csv
 work_dir/metadata/stats.csv
++ sizes.csv + presence_summary.csv + patient_split_manifest.csv
 ```
 
 ### Point the config to your `work_dir`
@@ -196,7 +243,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 
 # 2) Build CSVs / Stats from work_dir
-python -m utils.build_ultrasound_csvs --work_dir work_dir --config configs/config_usg.yaml --labels_csv work_dir/metadata/disease_labels.csv
+python -m tools.build_ultrasound_index --config configs/config_usg.yaml --test 3,8 --val 5 --out work_dir
 
 # 3) train seg-only
 python -m training.train_seg --config configs/config_usg.yaml --out work_dir/runs/seg_transunet
@@ -207,6 +254,10 @@ python -m training.eval_seg --config configs/config_usg.yaml --ckpt work_dir/run
 # 3b) Preview panels (optional)  
 python -m utils.preview_predictions --num_samples 6 --config configs/config_usg.yaml --ckpt work_dir/runs/seg_transunet/best.ckpt --eval_csv work_dir/metadata/test.csv --out_dir work_dir/preview_predictions 
  
+ 
+# 4a) Classification : feature based E2E
+python -m training.feature_clf --mode all --config configs/config_usg.yaml --ckpt  work_dir/runs/seg_transunet/best.ckpt --train_csv work_dir/metadata/train.csv --val_csv   work_dir/metadata/val.csv --test_csv  work_dir/metadata/test.csv --out_dir work_dir/runs/cls_rd --task rd_vh_normal --models lr,rf 
+
 ---- OLD 
 
 # 5) Extract region features from predicted masks  → converts predictions to 6–7 tabular features + has_rd_gt label.

@@ -96,59 +96,6 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
                 # print(f"[gt  ] {path0} | " + " ".join([f"{k}:{v}" for k,v in sorted(gt_cnt.items())]) + f" | tot:{tot}")
                 # print(f"[pred] {path0} | " + " ".join([f"{k}:{v}" for k,v in sorted(pr_cnt.items())]) + f" | tot:{tot}")
                 # print("[softmax_mean] " + " ".join([f"{i}:{sm_mean[i]:0.3f}" for i in range(len(sm_mean))]))
-
-
-        # --- DEBUG: per-sample histograms + optic nerve dumps + color pred ---
-        # import numpy as np, cv2
-        # from pathlib import Path
-        # from utils.vis_usg import build_id2color_from_meta, colorize_ids
-        #
-        # # handle (img, msk, path) or (img, msk)
-        # paths = None
-        # if isinstance(loader.dataset[0], (tuple, list)) and len(loader.dataset[0]) == 3:
-        #     paths = loader.dataset.df.image_path  # we’ll use df index below
-        #
-        # id2color = build_id2color_from_meta(meta_json, cfg["data"]["labels"]) if meta_json else {}
-        #
-        # B = img.shape[0]
-        # for j in range(min(B, 1)):  # dump first item of the batch
-        #     # logits[j]: [C,H,W], msk[j]: [H,W]
-        #     lo = logits[j].detach().cpu()
-        #     gt = msk[j].detach().cpu()
-        #     pr = torch.argmax(lo, dim=0).numpy().astype(np.int64)
-        #
-        #     # counts
-        #     def hist_str(arr):
-        #         u, c = np.unique(arr, return_counts=True)
-        #         return " ".join([f"{int(ui)}:{int(ci)}" for ui, ci in zip(u, c)])
-        #
-        #     H, W = pr.shape
-        #     tot = H * W
-        #     # best-effort file name
-        #     fname = "<na>"
-        #     if paths is not None:
-        #         # approximate global index for display
-        #         fname = str(loader.dataset.df.iloc[step % len(loader.dataset)].image_path)
-        #
-        #     print(f"[gt  ] {fname} | {hist_str(gt.numpy())} | tot:{tot}")
-        #     print(f"[pred] {fname} | {hist_str(pr)} | tot:{tot}")
-        #
-        #     # class-wise mean softmax (helps spot a collapsed class)
-        #     sm = torch.softmax(lo, dim=0).mean(dim=(1, 2)).numpy()
-        #     print("[softmax_mean]", " ".join([f"{i}:{sm[i]:.3f}" for i in range(len(sm))]))
-        #
-        #     # optic nerve (cid=3) binary dumps
-        #     cid = 3
-        #     on_gt = (gt.numpy() == cid).astype(np.uint8) * 255
-        #     on_pr = (pr == cid).astype(np.uint8) * 255
-        #     cv2.imwrite(str(Path(out_dir) / f"debug_gt_optic_e{epoch:03d}_s{step:05d}.png"), on_gt)
-        #     cv2.imwrite(str(Path(out_dir) / f"debug_pr_optic_e{epoch:03d}_s{step:05d}.png"), on_pr)
-        #
-        #     # full colorized predicted mask (BGR) using meta.json colors
-        #     pred_color = colorize_ids(pr, id2color)
-        #     cv2.imwrite(str(Path(out_dir) / f"pred_color_e{epoch:03d}_s{step:05d}.png"), pred_color)
-        # # --- end DEBUG ---
-
         # --------------------# --------------------# --------------------# --------------------# --------------------# --------------------# --------------------
 
         loss = composite_loss(
@@ -158,22 +105,6 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
             focal_w=cfg['loss']['focal_weight'],
             focal_gamma=cfg['loss']['focal_gamma']
         )
-
-
-        #  Loss = dice_w * Dice + ce_w * CE + focal_w * Focal lost  [CE is pixel level Cross Ent loss ]
-        # loss = composite_loss(
-        #     logits, msk, num_classes=K,
-        #     dice_w=cfg['loss']['dice_weight'], ce_w=0.3, focal_w=cfg['loss']['focal_weight'],
-        #     include_bg_in_dice=False,
-        #     ignore_index=None,  # IMPORTANT: do NOT ignore 0; we want bg in CE
-        #     bg_weight=0.3,  # tweak 0.2–0.5 as needed
-        #     dynamic_ce_weights=None  # or "batch_invfreq" if you want auto weights
-        # )
-        # TODO EXPERIMENTAL IF REDUCED CLASSES
-        # --- Normalize if the underlying CE/Focal used 'sum' (keeps numbers sane)
-        # H, W = img.shape[-2], img.shape[-1]
-        # if loss.dim() == 0 and loss.item() > 1000:  # heuristic: clearly a summed loss
-        #     loss = loss / (H * W)
 
         optimizer.zero_grad()
         loss.backward()

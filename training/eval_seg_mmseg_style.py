@@ -76,6 +76,14 @@ def main():
     gt_frac = {c: [] for c in range(num_classes)}
     pred_frac = {c: [] for c in range(num_classes)}
 
+
+    # --- mmseg-style confusion stats: dataset-level TP/FP/FN per class ---
+    # We will fill these using hard labels (argmax preds) in the loop below.
+    mm_tp = np.zeros(num_classes, dtype=np.int64)
+    mm_fp = np.zeros(num_classes, dtype=np.int64)
+    mm_fn = np.zeros(num_classes, dtype=np.int64)
+
+
     meta_json = None
     meta_path = Path(cfg.get("work_root", ".")) / "meta.json"
     if meta_path.exists():
@@ -100,6 +108,22 @@ def main():
             for c in range(num_classes):
                 gt_frac[c].append(float((gt_np == c).sum()) / tot)
                 pred_frac[c].append(float((pred_np == c).sum()) / tot)
+
+            # --- mmseg-style confusion update (hard labels) ---
+            for c in range(num_classes):
+                if c == 0:
+                    continue  # ignore background in mDice/mIoU
+
+                gt_c   = (gt_np == c)
+                pred_c = (pred_np == c)
+
+                tp = np.logical_and(pred_c, gt_c).sum()
+                fp = np.logical_and(pred_c, np.logical_not(gt_c)).sum()
+                fn = np.logical_and(np.logical_not(pred_c), gt_c).sum()
+
+                mm_tp[c] += int(tp)
+                mm_fp[c] += int(fp)
+                mm_fn[c] += int(fn)
 
             def _hist_str(arr):
                 uniq, cnt = np.unique(arr, return_counts=True)
@@ -152,23 +176,12 @@ def main():
             #
             # --- Predicted id mask for this sample ---
             pred_ids = torch.argmax(lo, dim=1)[0].detach().cpu().numpy().astype(np.uint8)
-            gt_np = msk[j].detach().cpu().numpy()
-            # gt_np.shape is either (H, W) or (1, H, W)
 
-            if gt_np.ndim == 3:  # (1, H, W) -> (H, W)
-                gt_ids = gt_np[0]
-            else:  # already (H, W)
-                gt_ids = gt_np
-
-            # ensure uint8 (or uint16 if you want)
-            gt_ids = gt_ids.astype(np.uint8)
-
-            # print("gt_ids shape:", gt_ids.shape)  # should print (512, 512)
             # (A) Sanity check: class histogram of the prediction
             #     Comment out after a quick run if too chatty.
             uniq, cnt = np.unique(pred_ids, return_counts=True)
-            # print(f"[gt ] {Path(ds.df.iloc[global_idx].image_path).name} | {_hist_str(gt_np)}")
-            # print(f"[pred] {Path(ip).name} | " + " ".join(f"{int(u)}:{int(c)}" for u, c in zip(uniq, cnt)))
+            print(f"[gt ] {Path(ds.df.iloc[global_idx].image_path).name} | {_hist_str(gt_np)}")
+            print(f"[pred] {Path(ip).name} | " + " ".join(f"{int(u)}:{int(c)}" for u, c in zip(uniq, cnt)))
 
             # (B) Dump predictions as images (ids + colorized)
             #     File name references the original image path.
@@ -178,18 +191,13 @@ def main():
             except Exception:
                 safe_name = Path(ip).name
 
-            pred_ids_dir = out_dir / "mask_pre"
-            m_gt_dir = out_dir / "mask_gt"
+            pred_ids_dir = out_dir / "pred_ids"
             pred_viz_dir = out_dir / "pred_viz"
             pred_ids_dir.mkdir(parents=True, exist_ok=True)
-            m_gt_dir.mkdir(parents=True, exist_ok=True)
             pred_viz_dir.mkdir(parents=True, exist_ok=True)
 
             # Save raw id map (grayscale PNG)
-            cv2.imwrite(str(pred_ids_dir / f"{safe_name}.png"), pred_ids)
-            cv2.imwrite(str(m_gt_dir / f"{safe_name}.png"), gt_ids)
-
-
+            cv2.imwrite(str(pred_ids_dir / f"{safe_name}_pred_ids.png"), pred_ids)
 
             # Save colorized visualization (uses your vis_usg.colorize_ids)
             pred_color = colorize_ids(pred_ids, id2color)  # HxWx3 (BGR) from your helper
@@ -246,6 +254,40 @@ def main():
     print(f"FG Dice (overall)       : {np.mean(fg_overall):.4f} ± {np.std(fg_overall):.4f}")
     print(f"FG Dice (present-only)  : {np.nanmean(fg_present):.4f} ± {np.nanstd(fg_present):.4f}")
 
+
+    # --- mmseg-style Dice / IoU (dataset-level, hard labels) ---
+    dice_per_class = {}
+    iou_per_class = {}
+
+    for c in fg_ids:
+        tp = mm_tp[c]
+        fp = mm_fp[c]
+        fn = mm_fn[c]
+
+        denom_dice = 2 * tp + fp + fn
+        denom_iou = tp + fp + fn
+
+        if denom_dice > 0:
+            dice_per_class[c] = 2.0 * tp / float(denom_dice)
+        else:
+            dice_per_class[c] = np.nan
+
+        if denom_iou > 0:
+            iou_per_class[c] = tp / float(denom_iou)
+        else:
+            iou_per_class[c] = np.nan
+
+    valid_dice = [v for v in dice_per_class.values() if not np.isnan(v)]
+    valid_iou  = [v for v in iou_per_class.values() if not np.isnan(v)]
+
+    mDice = float(np.mean(valid_dice)) if len(valid_dice) > 0 else float("nan")
+    mIoU  = float(np.mean(valid_iou))  if len(valid_iou) > 0 else float("nan")
+
+
+
+
+
+
     # Per-class (overall)
     print("Per class Overall Dice")
     for c in fg_ids:
@@ -271,7 +313,15 @@ def main():
         pm, ps = np.mean(pred_frac[c]), np.std(pred_frac[c])
         print(f"{name:>18}: {gm:.3%} ± {gs:.3%}  |  {pm:.3%} ± {ps:.3%}")
 
+    print("\n-- mmseg-style Dice / IoU (dataset-level, hard labels) --")
+    for c in fg_ids:
+        name = class_names[c] if c < len(class_names) else f"class_{c}"
+        d = dice_per_class[c]
+        i = iou_per_class[c]
+        print(f"{name:>18}: Dice={d:.4f}  IoU={i:.4f}" if not np.isnan(d) else f"{name:>18}: Dice=nan   IoU=nan")
 
+    print(f"\nmmseg-style mDice (fg mean): {mDice:.4f}")
+    print(f"mmseg-style mIoU  (fg mean): {mIoU:.4f}")
 
 if __name__ == '__main__':
     main()

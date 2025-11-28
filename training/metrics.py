@@ -1,41 +1,4 @@
-# training/metrics.py
-import torch
-# import torch.nn.functional as F
 
-# @torch.no_grad()
-# def per_class_dice_from_logits(logits, target, num_classes, eps=1e-6, ignore_index=0):
-#     """
-#     Returns:
-#       overall: dict[class_id -> dice over all pixels]
-#       present_only: dict[class_id -> dice only for samples where class appears in GT]
-#       present_mask: dict[class_id -> bool whether class appears in batch GT]
-#     """
-#     pred = torch.argmax(logits, dim=1)  # [B,H,W]
-#     overall = {}
-#     present_only = {}
-#     present_mask = {}
-#
-#     for c in range(num_classes):
-#         if c == ignore_index:
-#             continue
-#
-#         pred_c = (pred == c)
-#         tgt_c  = (target == c)
-#
-#         inter = (pred_c & tgt_c).sum().float()
-#         den   = pred_c.sum().float() + tgt_c.sum().float()
-#         dice  = (2 * inter + eps) / (den + eps)
-#
-#         overall[c] = float(dice.cpu())
-#
-#         is_present = tgt_c.any().item()
-#         present_mask[c] = bool(is_present)
-#         if is_present:
-#             present_only[c] = float(dice.cpu())
-#         else:
-#             present_only[c] = None
-#
-#     return overall, present_only, present_mask
 
 import torch
 import torch.nn.functional as F
