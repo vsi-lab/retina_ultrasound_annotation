@@ -24,39 +24,11 @@ https://pmc.ncbi.nlm.nih.gov/articles/PMC11875030/
 **Next steps**
 - TransUnet pipeline, cropping to reduce black background as much possible
 - Larger 768x768 images
-- Use the  mean Dice calculations throughout (train + eval)
 - Experiment with Boundary Aware Seg + uncertainty Seg. 
 - Multi task Seg + classification enhancement 
   - encoder + spatial RD gating (F * P_RD) → GAP → MLP
-```test       
-    Extend for multiclass VH + RD. 
-    
-    create a gate per class: P_D, P_VH, optionally P_other
-    Build gated features:
-	•	F_RD = F × P_RD
-	•	F_VH = F × P_VH
-	Then concatenate their pooled summaries:
-    
-        z_cls = concat(GAP(F), GAP(F_RD), GAP(F_VH)) → MLP
-  
-    Below for RD ()
-  	1.	encoder → F
-	2.	decoder(F) → seg_logits
-	3.	P = softmax(seg_logits) (or sigmoid for RD channel)
-	4.	Build attention-like features:
-        •	For RD-only:
-        •	P_RD = P[:, rd_class_idx, :, :]  (B, H, W)
-        •	P_RD = P_RD.unsqueeze(1) → (B, 1, H, W)
-        •	F_RD = F * P_RD
-        •	z_RD = GAP(F_RD)
-        •	Optionally also z_global = GAP(F)
-	5.	z_cls = concat(z_global, z_RD)
-	6.	MLP(z_cls) → class logits
+    where GAP -> Global Av Pooling 
 
-    Training:
-        •	Loss = λ_seg * L_seg + λ_cls * L_cls
-        •	Where L_cls is cross-entropy on {control, RD, VH}, etc.
-```
 
 
 ### How to get Pretrained TransUnet
@@ -85,38 +57,66 @@ FOR USFM colab setup, check the notebooks folder
 
 ## Quick End-to-End Summary
 
-| **Stage** | **Input** | **Output** | **Goal / Description**                                                                                                                |
-|------------|------------|------------|---------------------------------------------------------------------------------------------------------------------------------------|
-|  **Segmentation** | Raw ultrasound images (`work_dir/images/`) | Retinal layer and RD masks (`work_dir/runs/seg/`) | Perform pixel-level segmentation using TransUNet / U-Net to delineate retinal detachment regions.                                     |
-|  **Feature Extraction** | Segmented masks + corresponding images (`work_dir/images/`, `work_dir/runs/seg/`) | Feature vectors (`work_dir/features/*.parquet`) | Converts the predicted mask into a compact set of region-level features (area fraction, connected components, perimeter, etc.).       |
-|  **Classification** | Extracted feature vectors (`train/val/test_feats.parquet`) | Disease label: *RD* or *Normal* (`work_dir/runs/cls_rd/`) | Train a lightweight classifier (e.g., RandomForest, XGBoost) to determine presence of retinal detachment based on extracted features. |
+This approach of TVST study is deprecated
 
+[//]: # ()
+[//]: # (| **Stage** | **Input** | **Output** | **Goal / Description**                                                                                                                |)
+
+[//]: # (|------------|------------|------------|---------------------------------------------------------------------------------------------------------------------------------------|)
+
+[//]: # (|  **Segmentation** | Raw ultrasound images &#40;`work_dir/images/`&#41; | Retinal layer and RD masks &#40;`work_dir/runs/seg/`&#41; | Perform pixel-level segmentation using TransUNet / U-Net to delineate retinal detachment regions.                                     |)
+
+[//]: # (|  **Feature Extraction** | Segmented masks + corresponding images &#40;`work_dir/images/`, `work_dir/runs/seg/`&#41; | Feature vectors &#40;`work_dir/features/*.parquet`&#41; | Converts the predicted mask into a compact set of region-level features &#40;area fraction, connected components, perimeter, etc.&#41;.       |)
+
+[//]: # (|  **Classification** | Extracted feature vectors &#40;`train/val/test_feats.parquet`&#41; | Disease label: *RD* or *Normal* &#40;`work_dir/runs/cls_rd/`&#41; | Train a lightweight classifier &#40;e.g., RandomForest, XGBoost&#41; to determine presence of retinal detachment based on extracted features. |)
+
+[//]: # ()
 
 ---
 
 ####  Pipeline Overview
 
-```text
-Ultrasound Image
-      │
-      ▼
-[Segmentation Model: TransUNet]
-      │
-      ▼
-Segmentation Mask
-      │
-      ▼
-[Feature Extraction Module]
-      │
-      ▼
-Feature Vectors (.parquet)
-      │
-      ▼
-[Classification Model]
-      │
-      ▼
-Disease Prediction → RD / Normal
-```
+[//]: # (```text)
+
+[//]: # (Ultrasound Image)
+
+[//]: # (      │)
+
+[//]: # (      ▼)
+
+[//]: # ([Segmentation Model: TransUNet])
+
+[//]: # (      │)
+
+[//]: # (      ▼)
+
+[//]: # (Segmentation Mask)
+
+[//]: # (      │)
+
+[//]: # (      ▼)
+
+[//]: # ([Feature Extraction Module])
+
+[//]: # (      │)
+
+[//]: # (      ▼)
+
+[//]: # (Feature Vectors &#40;.parquet&#41;)
+
+[//]: # (      │)
+
+[//]: # (      ▼)
+
+[//]: # ([Classification Model])
+
+[//]: # (      │)
+
+[//]: # (      ▼)
+
+[//]: # (Disease Prediction → RD / Normal)
+
+[//]: # (```)
 
 ---
 
@@ -127,10 +127,14 @@ Disease Prediction → RD / Normal
 usg_segmentation/
 ├── .venv/                         # Virtual environment (excluded from version control)
 │
-├── classify/                      # Classification stage (RD vs Normal)
-│   ├── eval_cls.py                # Evaluate trained classifier on test features
-│   ├── predict_cls.py             # Predict RD/Normal on new feature data
-│   └── train_cls.py               # Train classifier on extracted features
+
+[//]: # (├── classify/                      # Classification stage &#40;RD vs Normal&#41;)
+
+[//]: # (│   ├── eval_cls.py                # Evaluate trained classifier on test features)
+
+[//]: # (│   ├── predict_cls.py             # Predict RD/Normal on new feature data)
+
+[//]: # (│   └── train_cls.py               # Train classifier on extracted features)
 │
 ├── configs/
 │   └── config_usg.yaml            # Central experiment configuration (data, model, aug, train)
@@ -207,7 +211,7 @@ E.g. this command would
 	2.	reads meta.json / obj_class_to_machine_color.json (for color→class mapping),
 	3.	converts color masks → id masks (if needed),
 	4.	computes sizes + class-presence stats (overall & by split),
-	5.	auto-selects a patient-wise split (or uses config if provided), and
+	5.	uses config
 	6.	writes the splits.
 
 [//]: # (Replace test and val splits needed for patient ids )
@@ -256,8 +260,8 @@ python -m training.eval_seg --config configs/config_usg.yaml --ckpt work_dir/run
 python -m utils.preview_predictions --num_samples 6 --config configs/config_usg.yaml --ckpt work_dir/runs/seg_transunet/best.ckpt --eval_csv work_dir/metadata/test.csv --out_dir work_dir/preview_predictions 
  
  
-# 4a) Classification : feature based E2E
-python -m training.feature_clf --mode all --config configs/config_usg.yaml --ckpt  work_dir/runs/seg_transunet/best.ckpt --train_csv work_dir/metadata/train.csv --val_csv   work_dir/metadata/val.csv --test_csv  work_dir/metadata/test.csv --out_dir work_dir/runs/cls_rd --task rd_vh_normal --models lr,rf 
+[//]: # (# 4a&#41; Classification : feature based E2E)
+[//]: # (python -m training.feature_clf --mode all --config configs/config_usg.yaml --ckpt  work_dir/runs/seg_transunet/best.ckpt --train_csv work_dir/metadata/train.csv --val_csv   work_dir/metadata/val.csv --test_csv  work_dir/metadata/test.csv --out_dir work_dir/runs/cls_rd --task rd_vh_normal --models lr,rf )
 
 ```
 
@@ -413,22 +417,31 @@ All transformations are deterministic examples (not random) to allow clinicians 
 
 ---
 # Model Training and Evaluation
-The model can be trained using TransUNet or U-Net.
-Both share the same data pipeline and loss configuration.
+The model can be trained using **TransUNet** (task-specific) or the **USFM UPerNet** baseline.  
+Both architectures share the same preprocessing, data pipeline, and loss configuration.
 
-### Metrics reported include:
-- Dice coefficient
--  IoU (Jaccard Index)
--  F1-score
--  Pixel accuracy
+### Metrics
 
+For this project, we primarily report **Dice-based segmentation metrics**:
 
-### Loss
+- **Per-class Dice**  
+  Dice coefficient reported separately for **retina** and **choroid**.
 
-- Dice Loss : It is based on the Dice coefficient, a metric that measures the overlap between the predicted segmentation and the ground truth. 
-- Focal loss : It is a modification of the standard cross-entropy loss that adds a focusing parameter \((\gamma )\) to down-weight the loss from easy-to-classify examples.
+- **Class-balanced mean Dice**  
+  Mean of per-class Dice scores across foreground structures (retina + choroid), giving each class equal weight regardless of size.
 
-By combining Dice Loss and Focal Loss, the combined loss function addresses two types of imbalances: foreground-background imbalance (via Dice) and the imbalance between easy and hard examples (via Focal). 
+> **Note:**  
+> **Pixel accuracy** is *not* reported because background pixels dominate the image and would make the metric misleadingly high.
+
+### Loss Function
+
+We use a **combined Dice + Cross-Entropy (CE) loss**:
+
+- **Dice loss**  
+  Encourages maximal overlap between the predicted mask and ground-truth mask, and is robust to strong foreground–background imbalance.
+
+- **Cross-Entropy loss**  
+  Standard segmentation loss term that stabilizes optimization and helps the model learn class probabilities.
 
 Read up : https://www.sciencedirect.com/science/article/pii/S0895611121001750
 
@@ -455,159 +468,10 @@ mean   0.455316     0.008196  0.608444  0.692165
 --> dice_rd : ~61 %, solid retinal detach overlap detection signal 
 
 
-
-
-```
-
-
-**Train segmentation** (TransUNet/U-Net as per config):
-```bash
-python -m training.train_seg \
-  --config configs/config_usg.yaml \
-  --train_csv work_dir/data/train.csv \
-  --val_csv   work_dir/data/val.csv \
-  --out       work_dir/runs/seg_transunet
 ```
 
 ---
-
-# Segmentation, Feature Extraction, and Classification Pipeline
-
-After segmentation, the pipeline extends to **feature extraction** and **disease classification** to determine the presence of *retinal detachment (RD)* from ultrasound images.
-
----
-
-### a) Segmentation using TransUNet
-
-The first stage performs **pixel-level segmentation** of the retinal layers and detachment regions.
-
-- **Model:** TransUNet or U-Net (configurable)
-- **Input:** Grayscale ocular ultrasound image (resized to 512×512)
-- **Output:** Semantic mask with classes — `background`, `retina_sclera`, and `retinal_detachment`
-
-Training:
-```bash
-python -m training.train_seg --config configs/config_usg.yaml
-```
-
-Evaluation:
-```bash
-python -m training.evaluate --config configs/config_usg.yaml
-```
-
-### b) Feature Extraction
-
-After segmentation, each predicted RD mask is analyzed to extract **region-level features** summarizing the geometry and spatial distribution of the detachment.
-
-Current extracted features include:
-- **rd_area_frac** – Fraction of the image area labeled as RD.  
-- **rd_num_cc** – Number of connected components (distinct RD regions).  
-- **rd_max_cc_frac** – Fraction of pixels in the largest connected RD region.  
-- **rd_perimeter_norm** – Normalized perimeter length of the largest RD contour.  
-- **rd_bbox_aspect** – Aspect ratio of the bounding box enclosing the RD region.  
-- **rd_center_y** – Normalized vertical position of the RD centroid.  
-- **has_rd_gt** – Ground-truth binary label for RD presence (used in downstream classification).
-
-These features are stored as `.parquet` tables (`train_feats.parquet`, `val_feats.parquet`, etc.)
-for downstream disease classification.
-Features stored 
-```
-work_dir/features/
- ├── train_feats.parquet
- ├── val_feats.parquet
- └── test_feats.parquet
- ```
-
-
-### c)  Classification — Retinal Detachment (RD) vs Normal
-The final stage trains a lightweight classifier (e.g., RandomForest, XGBoost, or Logistic Regression) on the extracted features to determine whether an eye image contains retinal detachment or not.
-
-Training
-```
-python -m classify.train_cls \
-  --train work_dir/features/train_feats.parquet \
-  --val   work_dir/features/val_feats.parquet \
-  --out   work_dir/runs/cls_rd
-
-```
-Evaluation
-```
-python -m classify.eval_cls \
-  --ckpt work_dir/runs/cls_rd/model.joblib \
-  --test work_dir/features/test_feats.parquet
-```
-
-This step outputs key metrics:
-- Accuracy, Precision, Recall, F1-score
-- ROC-AUC for RD vs Normal discrimination
-
-Results logged --> work_dir/runs/cls_rd/
-
-
----
-
-
-
-#  Configuration Overview
-
-Below is a simplified view of the main configuration file  
-[`configs/config_usg.yaml`](configs/config_usg.yaml).  
-Each section defines a clear part of the Retinal USG segmentation pipeline.
-
----
-
-###  Data Section
-```yaml
-data:
-  num_classes: 3                           # Number of segmentation classes (excluding background)
-  class_names: ["background", "retina_sclera", "retinal_detachment"]
-  labels:                                  # Mapping from class name to integer ID
-    background: 0
-    retina_sclera: 1
-    retinal_detachment: 2
-    # optic_nerve: 3                       # Uncomment if optic nerve sheath is included
-
-  work_dir: work_dir                       # Base directory for current experiment
-  images_sub: images                       # Folder containing input images
-  masks_sub: masks                         # Folder containing ground-truth masks
-  out_dir: data                            # Folder for generated CSVs (train/val/test)
-
-  train_frac: 0.70                         # Split ratios
-  val_frac: 0.15
-  test_frac: 0.15
-  stratify_by_rd: true                     # Ensure RD cases are balanced across splits
-
-  input_mode: grayscale                    # "grayscale" for USG, RGB if needed later
-  reader: auto                             # Automatically selects cv2 or PIL for reading
-  train_csv: work_dir/data/train.csv
-  val_csv:   work_dir/data/val.csv
-  test_csv:  work_dir/data/test.csv
-
-  resize: [512, 512]                       # Target spatial resolution (HxW)
-  normalize: zscore                        # Normalization type: zscore|minmax|log
-  despeckle: median3                       # Apply median filter for speckle reduction
-  fan_mask: none                           # For optional sector cropping (none|left|right|center)
-
-
-
-### Relevant config keys (configs/config_usg.yaml)
-```yaml
-data:
-  resize: [512, 512]        # training only; preview does not resize
-  normalize: zscore         # zscore|minmax|log (training only)
-  despeckle: median3        # none|median3 (applied pre-augment in training; preview shows both)
-
-aug:
-  hflip: 0.2                # probability
-  rotate_deg: [-5, 5]
-  shear_deg: [-2, 2]
-  scale: [0.98, 1.02]
-  translate: [-0.02, 0.02]
-  gaussian_noise_std: 0.01  # speckle σ (multiplicative)
-  brightness: [0.95, 1.05]  # gamma min/max (around 1.0)
- ```
-
---- 
+ 
 # References
 
 - **TVST 2025 Study:** *Automated Detection of Retinal Detachment using Deep Learning-based Segmentation on Ocular Ultrasonography*  
@@ -619,35 +483,4 @@ aug:
 - **Albumentations:** *Fast and Flexible Image Augmentations* (Buslaev et al., 2020)  
   [https://albumentations.ai](https://albumentations.ai)
 
-
-# Appendix
-
-### Inspect class distribution in your feature files
-
-```bash
-python - << 'PY'
-import pandas as pd
-for p in ["work_dir/features/train_feats.parquet","work_dir/features/val_feats.parquet"]:
-    try:
-        df = pd.read_parquet(p)
-    except Exception:
-        df = pd.read_csv(p)
-    print("==", p)
-    print("columns:", list(df.columns))
-    # common label candidates:
-    for col in ["label","rd_present","has_rd","y","target"]:
-        if col in df.columns:
-            print(col, "-> counts\n", df[col].value_counts(dropna=False), "\n")
-PY
-```
-
-### If rd_present is missing, check if we wrote RD stats
-
-```bash
-python - << 'PY'
-import pandas as pd
-df = pd.read_parquet("work_dir/features/train_feats.parquet")
-print(df.filter(regex="rd|RD|label|target|frac|pix", axis=1).head())
-PY
-
-```
+  
