@@ -182,7 +182,6 @@ Keep each experiment self‑contained in one folder:
 ```
 work_dir/
  ├── aug_previews/  # Augmentation preview panels (e.g., img1__preview_panel.png)
- ├── preview_predictions/        # Preview Original, ground truth, prediction as image panel 
  │
  ├── images/
  │    ├── Patient1/
@@ -256,8 +255,8 @@ python -m training.train_seg --config configs/config_usg.yaml --out work_dir/run
 # 3a) Eval step 3)  
 python -m training.eval_seg --config configs/config_usg.yaml --ckpt work_dir/runs/seg_transunet/best.ckpt --out work_dir/runs/seg_transunet/eval
 
-# 3b) Preview panels (optional)  
-python -m utils.preview_predictions --num_samples 6 --config configs/config_usg.yaml --ckpt work_dir/runs/seg_transunet/best.ckpt --eval_csv work_dir/metadata/test.csv --out_dir work_dir/preview_predictions 
+[//]: # (# 3b&#41; Preview panels &#40;optional&#41;  )
+[//]: # (python -m utils.preview_predictions --num_samples 6 --config configs/config_usg.yaml --ckpt work_dir/runs/seg_transunet/best.ckpt --eval_csv work_dir/metadata/test.csv --out_dir work_dir/preview_predictions )
  
  
 [//]: # (# 4a&#41; Classification : feature based E2E)

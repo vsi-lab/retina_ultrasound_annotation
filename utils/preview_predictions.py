@@ -13,7 +13,7 @@ import yaml
 
 # NOTE: do NOT import TransUNet here anymore.
 # We'll import it lazily only if cfg requests it.
-from models.unet import UNet  # keep handcrafted UNet as fallback
+# from models.unet import UNet  # keep handcrafted UNet as fallback
 from training.dataset import SegCSV
 from training.metrics import per_class_dice_from_logits
 from utils.paths import resolve_under_root_cfg
