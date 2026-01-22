@@ -19,7 +19,14 @@ https://pmc.ncbi.nlm.nih.gov/articles/PMC11875030/
 ## Note on Models to train
 - Unet++ : Gold standard baseline for segmentation
 - TransUnet : A very strong option here as noted in TVST 2025 study. <--- Gave better results than Unet++
-- MedSAM / 2 : 
+- MedSAM / 2 : Not tried
+- segformer: Not tried
+
+### USFM 
+
+In the first draft, we compare a task-specific model, TransUNet, with a foundation-model baseline, the UltraSound Foundation Model (USFM) UPerNet https://github.com/openmedlab/USFM
+FOR USFM colab setup, check the notebooks folder
+
 
 **Next steps**
 - Scale dataset: More patients, more views/clock-hours, more pathology variety
@@ -51,11 +58,6 @@ cd vit_checkpoint/imagenet21k
 curl -L  'https://storage.googleapis.com/vit_models/imagenet21k/R50%2BViT-B_16.npz' -o R50+ViT-B_16.npz
 ```
 
-----
-# USFM 
-
-In the first draft, we compare a task-specific model, TransUNet, with a foundation-model baseline, the UltraSound Foundation Model (USFM) UPerNet https://github.com/openmedlab/USFM
-FOR USFM colab setup, check the notebooks folder
 
 
 ---
