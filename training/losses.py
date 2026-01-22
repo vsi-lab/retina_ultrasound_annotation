@@ -37,8 +37,8 @@ def focal_from_logits(logits, target, num_classes, gamma=2.0):
     """
     Compute Focal loss from unnormalized logits.
 
-    The focal term down-weights easy examples and focuses training on harder
-    misclassified pixels, which helps when dealing with severe class imbalance
+    Focal loss is a modified cross-entropy loss that down-weights “easy” pixels (where the model is already very confident)
+    and up-weights “hard” misclassified pixels, which helps when dealing with severe class imbalance
     (e.g., small retinal detachment regions vs. large background).
 
     Args:

@@ -11,20 +11,22 @@ The project emphasizes:
 - Consistent data/model configuration,
 - Clinician-readable augmentation previews for validation.
 
-Note : This project closely follows the pipeline described in the TVST 2025 study on Automated Detection of Retinal Detachment using Deep Learning-based Segmentation on Ocular Ultrasonography (PMCID: PMC11875030)
+Note : This project is similar to this TVST 2025 study on Automated Detection of Retinal Detachment using Deep Learning-based Segmentation on Ocular Ultrasonography (PMCID: PMC11875030)
 https://pmc.ncbi.nlm.nih.gov/articles/PMC11875030/ 
 
 ---
 
 ## Note on Models to train
 - Unet++ : Gold standard baseline for segmentation
-- TransUnet : A very strong option here as noted in TVST 2025 study.
+- TransUnet : A very strong option here as noted in TVST 2025 study. <--- Gave better results than Unet++
 - MedSAM / 2 : 
 
 **Next steps**
-- TransUnet pipeline, cropping to reduce black background as much possible
-- Larger 768x768 images
-- Experiment with Boundary Aware Seg + uncertainty Seg. 
+- Scale dataset: More patients, more views/clock-hours, more pathology variety
+- Add clinically useful classes RD/VH
+- Add cropped ROIs: cropping to reduce black background as much possible
+- Train with higher-resolution images e.g. 768x768 px
+- Experiment Boundary Loss or Surface Loss. 
 - Multi task Seg + classification enhancement 
   - encoder + spatial RD gating (F * P_RD) → GAP → MLP
     where GAP -> Global Av Pooling 
@@ -51,72 +53,10 @@ curl -L  'https://storage.googleapis.com/vit_models/imagenet21k/R50%2BViT-B_16.n
 
 ----
 # USFM 
+
+In the first draft, we compare a task-specific model, TransUNet, with a foundation-model baseline, the UltraSound Foundation Model (USFM) UPerNet https://github.com/openmedlab/USFM
 FOR USFM colab setup, check the notebooks folder
 
----
-
-## Quick End-to-End Summary
-
-This approach of TVST study is deprecated
-
-[//]: # ()
-[//]: # (| **Stage** | **Input** | **Output** | **Goal / Description**                                                                                                                |)
-
-[//]: # (|------------|------------|------------|---------------------------------------------------------------------------------------------------------------------------------------|)
-
-[//]: # (|  **Segmentation** | Raw ultrasound images &#40;`work_dir/images/`&#41; | Retinal layer and RD masks &#40;`work_dir/runs/seg/`&#41; | Perform pixel-level segmentation using TransUNet / U-Net to delineate retinal detachment regions.                                     |)
-
-[//]: # (|  **Feature Extraction** | Segmented masks + corresponding images &#40;`work_dir/images/`, `work_dir/runs/seg/`&#41; | Feature vectors &#40;`work_dir/features/*.parquet`&#41; | Converts the predicted mask into a compact set of region-level features &#40;area fraction, connected components, perimeter, etc.&#41;.       |)
-
-[//]: # (|  **Classification** | Extracted feature vectors &#40;`train/val/test_feats.parquet`&#41; | Disease label: *RD* or *Normal* &#40;`work_dir/runs/cls_rd/`&#41; | Train a lightweight classifier &#40;e.g., RandomForest, XGBoost&#41; to determine presence of retinal detachment based on extracted features. |)
-
-[//]: # ()
-
----
-
-####  Pipeline Overview
-
-[//]: # (```text)
-
-[//]: # (Ultrasound Image)
-
-[//]: # (      │)
-
-[//]: # (      ▼)
-
-[//]: # ([Segmentation Model: TransUNet])
-
-[//]: # (      │)
-
-[//]: # (      ▼)
-
-[//]: # (Segmentation Mask)
-
-[//]: # (      │)
-
-[//]: # (      ▼)
-
-[//]: # ([Feature Extraction Module])
-
-[//]: # (      │)
-
-[//]: # (      ▼)
-
-[//]: # (Feature Vectors &#40;.parquet&#41;)
-
-[//]: # (      │)
-
-[//]: # (      ▼)
-
-[//]: # ([Classification Model])
-
-[//]: # (      │)
-
-[//]: # (      ▼)
-
-[//]: # (Disease Prediction → RD / Normal)
-
-[//]: # (```)
 
 ---
 
@@ -127,31 +67,14 @@ This approach of TVST study is deprecated
 usg_segmentation/
 ├── .venv/                         # Virtual environment (excluded from version control)
 │
-
-[//]: # (├── classify/                      # Classification stage &#40;RD vs Normal&#41;)
-
-[//]: # (│   ├── eval_cls.py                # Evaluate trained classifier on test features)
-
-[//]: # (│   ├── predict_cls.py             # Predict RD/Normal on new feature data)
-
-[//]: # (│   └── train_cls.py               # Train classifier on extracted features)
-│
-├── configs/
-│   └── config_usg.yaml            # Central experiment configuration (data, model, aug, train)
-│
 ├── docs/                          # Documentation and visual outputs
 │   └── images/                    # e.g., preview_panel.png, diagrams, etc.
 │
-├── features/                      # Feature extraction modules
-│   ├── extract_features.py        # End-to-end feature pipeline from masks
-│   └── region_features.py         # Individual region-based feature computations
-│
 ├── models/                        # Segmentation model definitions
-│   ├── transunet.py               # Transformer-based segmentation model
-│   └── unet.py                    # Baseline U-Net segmentation model
+│   ├── model_factory.py           # Factory to initiate different models, TransUnet, uNet++
+│   └── segformer_wrap.py          # Wrapper for segformer model <--- Experimental, not fully integrated
 │
 ├── tests/                         # Unit and integration tests
-│   ├── test_dataset.py            # Tests for dataset loading, CSV scanning, etc.
 │   ├─  <other tests>
 │
 ├── training/                      # Segmentation training components
@@ -255,13 +178,6 @@ python -m training.train_seg --config configs/config_usg.yaml --out work_dir/run
 # 3a) Eval step 3)  
 python -m training.eval_seg --config configs/config_usg.yaml --ckpt work_dir/runs/seg_transunet/best.ckpt --out work_dir/runs/seg_transunet/eval
 
-[//]: # (# 3b&#41; Preview panels &#40;optional&#41;  )
-[//]: # (python -m utils.preview_predictions --num_samples 6 --config configs/config_usg.yaml --ckpt work_dir/runs/seg_transunet/best.ckpt --eval_csv work_dir/metadata/test.csv --out_dir work_dir/preview_predictions )
- 
- 
-[//]: # (# 4a&#41; Classification : feature based E2E)
-[//]: # (python -m training.feature_clf --mode all --config configs/config_usg.yaml --ckpt  work_dir/runs/seg_transunet/best.ckpt --train_csv work_dir/metadata/train.csv --val_csv   work_dir/metadata/val.csv --test_csv  work_dir/metadata/test.csv --out_dir work_dir/runs/cls_rd --task rd_vh_normal --models lr,rf )
-
 ```
 
 ### Preview augmentations
@@ -294,7 +210,7 @@ python -m utils.preview_augs  --config configs/config_usg.yaml --n 12
       --gt_mode raw      
 ```
 **Panel output**
-![Prediction Preview sample only]<img src="docs/images/prediction_panel.png" width="850">
+![Prediction Preview sample only]<img src="docs/images/prediction_panel.png" width="1300">
 ---
 
 
@@ -340,6 +256,7 @@ python -m utils.preview_augs --config configs/config_usg.yaml --n 4
 
  **Augmentation Preview Panel:**  
 ![Augmentation Preview]<img src="docs/images/preview_panel.png" width="950">
+
 
 Each row in the augmentation panel displays **the image on the left** and its **corresponding segmentation mask on the right**.  
 All transformations are deterministic examples (not random) to allow clinicians to visually verify the effects of augmentation on retinal structures.
@@ -421,26 +338,39 @@ Both architectures share the same preprocessing, data pipeline, and loss configu
 
 ### Metrics
 
-For this project, we primarily report **Dice-based segmentation metrics**:
+
+For this project, we **focus on Dice-based segmentation metrics**:
 
 - **Per-class Dice**  
-  Dice coefficient reported separately for **retina** and **choroid**.
+  Dice coefficient is reported separately for **retina** and **choroid**  
+  (e.g., `dice_retina`, `dice_choroid` and their present-only variants `diceP_*`).
 
-- **Class-balanced mean Dice**  
-  Mean of per-class Dice scores across foreground structures (retina + choroid), giving each class equal weight regardless of size.
+- **Foreground Dice (FG Dice)**  
+  Reported as **FG Dice (overall)** and **FG Dice (present-only)**, summarizing mean Dice over
+  foreground structures (retina + choroid). This plays the role of a class-balanced foreground score.
+
+- **Pixel-share statistics**  
+  Mean pixel share per class (GT | Pred) for background, retina, and choroid, used to check
+  over-/under-segmentation and class imbalance.
 
 > **Note:**  
-> **Pixel accuracy** is *not* reported because background pixels dominate the image and would make the metric misleadingly high.
+> **Pixel accuracy** is computed by the evaluation script but **not used as a headline metric** in analysis,
+> because background pixels dominate the image and would make accuracy misleadingly high.
 
 ### Loss Function
 
-We use a **combined Dice + Cross-Entropy (CE) loss**:
+We use a **combined Dice + Focal loss**:
 
 - **Dice loss**  
-  Encourages maximal overlap between the predicted mask and ground-truth mask, and is robust to strong foreground–background imbalance.
+  Encourages maximal overlap between predicted and ground-truth masks and is robust to strong
+  foreground–background imbalance.
 
-- **Cross-Entropy loss**  
-  Standard segmentation loss term that stabilizes optimization and helps the model learn class probabilities.
+- **Focal loss**  
+  A modified form of Cross-Entropy that down-weights easy examples and focuses learning on harder,
+  misclassified pixels — helpful under strong class imbalance.
+
+Together, Dice + Focal help the model cope with severe foreground–background imbalance in these
+ultrasound masks.
 
 Read up : https://www.sciencedirect.com/science/article/pii/S0895611121001750
 

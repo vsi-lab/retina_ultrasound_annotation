@@ -29,19 +29,12 @@ data:
 
   resize: [512, 512]                       # Target spatial resolution (HxW)
 #  resize: [768, 768]                       # Target spatial resolution (HxW)
-#  resize: [800, 1280]                       # Target spatial resolution (HxW)
   normalize: zscore                        # Normalization type: zscore|minmax|log  == minmax ONLY FOR SEGFORMER
   despeckle: median3                       # Apply median filter for speckle reduction
   fan_mask: none                           # For optional sector cropping (none|left|right|center)
   return_path: true
 
   mask_mode: grayscale          # auto | grayscale | color  (auto = detect by channels)
-#  color_palette:           # used if mask is color (BGR as saved by cv2)
-#    background: [0, 0, 0]
-#    retina: [0, 255, 0]
-#    choroid: [0, 255, 255]
-#    vitreous_humor: [255, 0,  255]  # example; set actual colors to  use
-#    optic_nerve: [124, 124,  255]  # example; set actual colors to  use
 
 
 model:
@@ -72,7 +65,7 @@ aug:
 
 train:
   batch_size: 6                            # Images per batch
-  epochs: 200  # 40                               # Number of training epochs
+  epochs: 5  # 40                               # Number of training epochs
   lr: 1.0e-3                               # Initial learning rate
   weight_decay: 1.0e-4                     # L2 regularization
   previews_per_epoch: 2
@@ -82,7 +75,6 @@ train:
 
 loss:
   dice_weight: 0.7                         # Dice contribution
-#  focal_weight: 0.3                        # Focal contribution
   focal_weight: 0.0                        # Focal contribution
   focal_gamma: 2.0                         # Focal focusing parameter
 
