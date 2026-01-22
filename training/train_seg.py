@@ -75,29 +75,6 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
         img, msk = img.to(device), msk.to(device)
         logits = model(img)
 
-        # --------------------# --------------------# --------------------# --------------------# --------------------# --------------------# --------------------
-        # === DEBUG: per-class counts + softmax mean (1st item) ===
-        # if step % max(1, preview_every or 50) == 0:
-        #     with torch.no_grad():
-                # counts at model input resolution
-                # gt0  = msk[0].detach().cpu().numpy()
-                # pr0  = torch.argmax(logits[0], dim=0).detach().cpu().numpy()
-                # H, W = gt0.shape
-                # tot  = H * W
-
-                # def counts(arr):
-                #     uniq, cnt = np.unique(arr, return_counts=True)
-                #     return {int(u): int(c) for u, c in zip(uniq, cnt)}
-
-                # gt_cnt  = counts(gt0)
-                # pr_cnt  = counts(pr0)
-                # sm_mean = torch.softmax(logits[0], dim=0).mean(dim=(1,2)).cpu().numpy()
-
-                # print(f"[gt  ] {path0} | " + " ".join([f"{k}:{v}" for k,v in sorted(gt_cnt.items())]) + f" | tot:{tot}")
-                # print(f"[pred] {path0} | " + " ".join([f"{k}:{v}" for k,v in sorted(pr_cnt.items())]) + f" | tot:{tot}")
-                # print("[softmax_mean] " + " ".join([f"{i}:{sm_mean[i]:0.3f}" for i in range(len(sm_mean))]))
-        # --------------------# --------------------# --------------------# --------------------# --------------------# --------------------# --------------------
-
         loss = composite_loss(
             logits, msk,
             cfg['data']['num_classes'],
@@ -110,33 +87,6 @@ def train_one_epoch(model, loader, optimizer, cfg, device, out_dir: str,
         loss.backward()
         optimizer.step()
         tot += float(loss.detach().cpu())
-
-        # --- Diagnostics every debug_every steps ---
-        # if debug_every and (step % debug_every == 0):
-        #     # Argmax prediction
-        #     pred = torch.argmax(logits, dim=1)  # [B,H,W]
-        #
-        #     # Batch histograms
-        #     gt_counts   = _bincount_np(msk,  K)
-        #     pred_counts = _bincount_np(pred, K)
-        #
-        #     # Mean softmax per class
-        #     smx_str = _softmax_mean_str(logits)
-        #
-        #     # Optional short path hint
-        #     pstr = ""
-        #     if path0 is not None:
-        #         try:
-        #             root = Path(cfg.get("work_root", ".")).resolve()
-        #             pstr = " " + Path(path0).resolve().relative_to(root).as_posix()
-        #         except Exception:
-        #             pstr = " " + str(path0)
-        #
-        #     # print(f"[gt  ]{pstr} | {_hist_str(gt_counts)}")
-        #     # print(f"[pred]{pstr} | {_hist_str(pred_counts)}")
-        #     # print(f"[softmax_mean] {smx_str}")
-        #     Hm, Wm = logits.shape[-2:]
-        #     print(f"[debug] model_input={Hm}x{Wm}")
 
         # --- Optional step-wise preview panel (as you had) ---
         if preview_every and (step % preview_every == 0):
@@ -193,8 +143,6 @@ def validate(model, loader, cfg, device, out_dir: str, epoch: int,
         if b_idx == 0 and previews_per_epoch > 0:
             n = min(previews_per_epoch, img.shape[0])
             base_index = 0  # because val loader is shuffle=False
-            # global dataset index of sample j in this batch:
-            start_idx = 0
             # compute where this batch starts: b_idx * batch_size (safe even if last batch is smaller)
             start_idx = b_idx * loader.batch_size
             for j in range(n):
